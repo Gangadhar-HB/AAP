@@ -1,0 +1,47 @@
+---
+# Sample AAP YAML file for testing purposes
+
+apiVersion: v1
+kind: Application
+metadata:
+  name: sample-aap-app
+  namespace: default
+spec:
+  description: "A sample AAP application for testing."
+  version: "1.0.0"
+  components:
+    - name: web
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+      env:
+        - name: ENVIRONMENT
+          value: "test"
+      resources:
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
+        requests:
+          memory: "128Mi"
+          cpu: "250m"
+    - name: backend
+      image: python:3.11-slim
+      ports:
+        - containerPort: 5000
+      env:
+        - name: FLASK_ENV
+          value: "development"
+      resources:
+        limits:
+          memory: "512Mi"
+          cpu: "1"
+        requests:
+          memory: "256Mi"
+          cpu: "500m"
+  ingress:
+    enabled: true
+    host: "sample-aap.local"
+    paths:
+      - path: /
+        serviceName: web
+        servicePort: 80
