@@ -1,0 +1,30 @@
+[Name]
+name = {{ vm_name }}
+host = {{ vm_name }}
+
+[Image]
+image = /usr/local/lib/Prebuilt_kodiak/{{ vmimage }}
+volume = /usr/local/etc/{{ vm_type }}_thin_pool_volume.cfg
+
+[Memory]
+ram = {{ vm_ram }}
+
+[CPU]
+cpu = {{ vm_cpu }}
+max_cpu = {{ vm_cpu }}
+cpu_set = auto
+
+[Partitions]
+part0 = /dev/{{ vg_name | default('vg01') }}/{{ vm_name }}_part:{{ vm_osdisk_size }}G:boot_order=1
+part1 = /dev/{{ vg_name | default('vg01') }}/{{ vm_name }}_vol:{{ vm_disk_size }}G
+controller = scsi
+thinpoolname = kpool
+thinpoolsize = {{ thinPoolsize }}g  #kpool size
+
+[Cloudinit]
+cloudinitpath_vm = /cloudinitiso/{{ vm_name}}/{{ vm_name }}_ciiso.iso
+
+[Bridges]
+{% for bridges,mac in bridgeList| zip(macList) %}
+bridge{{loop.index0}} = {{ bridges}},{{ mac }}
+{% endfor %}
