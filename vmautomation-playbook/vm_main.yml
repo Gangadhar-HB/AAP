@@ -73,19 +73,20 @@
           when: item.name not in already_present and (vm_to_rerun is not defined or vm_to_rerun == item.name)
           with_items: "{{ vms }}"
     
-        - name: LauchVM
+        - name: Launch VMs in parallel
           include_role:
-           name: create_vm
-           apply:
-            delegate_to: "{{ delegate | default(item.hostip) }}"
-            run_once: true
+            name: create_vm
+            apply:
+              delegate_to: "{{ delegate | default(item.hostip) }}"
+              run_once: true
           vars:
             vm_type: "{{ item.vm_type }}"
-            vm_name: "{{ vm_to_rerun | default(item.name) }}" 
-          #when: item.name not in already_present and vm_to_rerun == "{{ item.name }}"
+            vm_name: "{{ vm_to_rerun | default(item.name) }}"
           when: item.name not in already_present and (vm_to_rerun is not defined or vm_to_rerun == item.name)
           with_items: "{{ vms }}"
           ignore_errors: true
+          async: 1800       # Adjust timeout in seconds
+          poll: 0           # Don't wait for completion (fire-and-forget)
 
         - name: Display VMs that are already present
           debug:
