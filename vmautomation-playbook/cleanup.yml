@@ -1,0 +1,13 @@
+# cleanup.yml
+- name: Final Cleanup
+  hosts: all
+  gather_facts: no
+  vars:
+    configured_vms_path: /usr/local/bin/vmautomation-playbook/configured_vms.txt
+  tasks:
+    - name: Delete the configured_vms.txt file
+      become: yes
+      file:
+        path: "{{ configured_vms_path }}"
+        state: absent
+

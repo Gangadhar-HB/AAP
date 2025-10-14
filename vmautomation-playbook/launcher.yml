@@ -1,0 +1,22 @@
+# launcher.yml
+- name: Launch VM Provisioning Jobs in Parallel
+  hosts: all
+  gather_facts: no
+  vars_files:
+    - /usr/local/bin/vmautomation-playbook/input.yml
+
+  tasks:
+    - name: Launch a separate provisioning job for each VM
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: vm_item
+      ansible.controller.job_launch:
+        # This is the name of the Job Template that runs the worker.yml playbook
+        job_template: "JT - Provision Single VM"
+        extra_vars:
+          # Pass all necessary details for a single VM to the worker job
+          vm_details: "{{ vm_item }}"
+          user: "{{ user }}"
+          password: "{{ password }}"
+          setup: "{{ setup | default(0, true) }}"
+
