@@ -1,3 +1,4 @@
+# wrapper_launch_vm.yml (Corrected)
 ---
 - name: "Delegate launch for {{ item.name }}"
   block:
@@ -6,10 +7,13 @@
         name: create_vm
       vars:
         vm_name: "{{ item.name }}"
-      # 'register' is a task-level keyword and must not be indented under 'vars'
       register: create_vm_role_result
 
-    - name: Store successful launch job ID
+    # THIS TASK IS THE FIX:
+    # It builds a list of complex objects (dictionaries), not just strings.
+    # Each object contains all the info needed by the next workflow step.
+    - name: Store successful launch job ID and VM data
       ansible.builtin.set_fact:
         successful_vms: "{{ successful_vms | default([]) + [{'name': item.name, 'ip_address': item.networkInterface[0].ipaddress|ipaddr('address'), 'job_id': create_vm_role_result.ansible_facts.create_vm_job_id, 'hostip': item.hostip}] }}"
+
   delegate_to: "{{ item.hostip }}"
