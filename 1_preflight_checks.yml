@@ -14,24 +14,18 @@
 
   tasks:
     - name: Validate input for each VM
+      # This task was correct, no changes needed here if it works
       ansible.builtin.include_tasks: files/validate_input.yml
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
 
     - name: Check for existing VMs and build creation list
-      block:
-        - name: Check if VM is present on hypervisor
-          ansible.builtin.include_tasks: files/check_vmpresent.yml
-          vars:
-            # This task should append to an 'already_present' list if found
-            vm: "{{ item }}"
-
-      # We loop over all VMs and delegate the check to the correct hypervisor
+      # We loop over the WRAPPER file, not a block.
+      ansible.builtin.include_tasks: wrapper_check_vmpresent.yml
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
-      delegate_to: "{{ item.hostip }}"
 
     - name: Finalize list of VMs to create
       ansible.builtin.set_fact:
@@ -45,7 +39,6 @@
       ansible.builtin.debug:
         var: vms_to_create
 
-    # CRITICAL: This makes the list of VMs available to the next workflow step
     - name: Set workflow facts for VMs to be created
       ansible.builtin.set_stats:
         data:

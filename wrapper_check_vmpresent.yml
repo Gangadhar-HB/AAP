@@ -1,0 +1,11 @@
+# wrapper_check_vmpresent.yml
+---
+- name: "Delegate the VM presence check for {{ item.name }}"
+  block:
+    - name: Include the actual check tasks
+      ansible.builtin.include_tasks: files/check_vmpresent.yml
+      vars:
+        # Pass the current loop item to the included file
+        vm: "{{ item }}"
+  # The delegate_to keyword is correctly placed on the block
+  delegate_to: "{{ item.hostip }}"
