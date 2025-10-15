@@ -28,4 +28,3 @@
           effective_setup: "{{ setup | default(0) }}"
           vmimage: "{{ vmimage }}"
           vg_name: "{{ vg_name }}"
-          hostip: "{{ hostip }}"
