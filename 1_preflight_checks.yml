@@ -26,3 +26,5 @@
         data:
           vms_to_create: "{{ vms_to_create }}"
           effective_setup: "{{ setup | default(0) }}"
+          vmimage: "{{ vmimage }}"
+          vg_name: "{{ vg_name }}"
