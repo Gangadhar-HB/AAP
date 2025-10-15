@@ -6,11 +6,6 @@
     already_present: []
 
   tasks:
-    - name: Validate input for all defined VMs
-      ansible.builtin.include_tasks: files/validate_input.yml
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: item
 
     - name: Check which VMs are already present
       ansible.builtin.include_tasks: wrapper_check_vmpresent.yml
