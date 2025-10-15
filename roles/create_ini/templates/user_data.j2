@@ -1,0 +1,314 @@
+#cloud-config
+
+write_files:
+  - path: /config/custom-config.sh
+    permissions: 0755
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # Exit immediately if a command exits with a non-zero status.
+      set -e
+      # Treat unset variables as an error when substituting.
+      set -u
+      # Pipelines fail on the first command that fails, not the last.
+      set -o pipefail
+
+      # --- Global Variables ---
+      LOG_FILE="/var/log/cloud-init-output.log"
+      IP="localhost"
+      CREDS="admin:admin"
+      DEST_DIR="/config/cloud/custom-config"
+      RPM_PATH="/var/config/rest/downloads/f5-declarative-onboarding.rpm"
+      DECLARATION_PATH="$DEST_DIR/do_declaration.json"
+
+      log_and_run() {
+          local description="$1"
+          shift
+          local command=("$@")
+
+          echo "INFO: Executing: $description" >> "$LOG_FILE"
+          echo "INFO: Command: ${command[*]}" >> "$LOG_FILE"
+
+          if output=$("${command[@]}" 2>&1); then
+            echo "SUCCESS: $description" >> "$LOG_FILE"
+            if [[ -n "$output" ]]; then
+                echo "OUTPUT: $output" >> "$LOG_FILE"
+            fi
+          else
+            local exit_code=$?
+            echo "##################################################" >> "$LOG_FILE"
+            echo "ERROR: Failed to execute: $description" >> "$LOG_FILE"
+            echo "ERROR: Command failed with exit code: $exit_code" >> "$LOG_FILE"
+            echo "ERROR: Command: ${command[*]}" >> "$LOG_FILE"
+            echo "ERROR: Output:" >> "$LOG_FILE"
+            echo "$output" >> "$LOG_FILE"
+            echo "##################################################" >> "$LOG_FILE"
+            exit $exit_code
+          fi
+      }
+
+      # Waits for the BIG-IP system to be ready and then applies basic configuration.
+      configure_bigip_system() {
+          echo "--- Waiting for BIG-IP services to be ready ---" >> "$LOG_FILE"
+          source /usr/lib/bigstart/bigip-ready-functions
+          wait_bigip_ready
+
+          echo "--- Applying base system configuration via tmsh ---" >> "$LOG_FILE"
+          log_and_run "Provision LTM ASM and GTM" tmsh modify /sys provision asm ltm gtm level nominal
+          echo "--- Waiting for BIG-IP services to be ready after module provision ---" >> "$LOG_FILE"
+          source /usr/lib/bigstart/bigip-ready-functions
+          wait_bigip_ready
+
+          log_and_run "Disabling MGMT DHCP" tmsh modify /sys global-setting mgmt-dhcp disabled
+          log_and_run "Creating management IP" tmsh create /sys management-ip {{ F5_mgmtIP }}
+          log_and_run "Creating default management route" tmsh create /sys management-route default gateway {{ F5_mgmtGW  }}
+          log_and_run "Adding DNS name-servers" tmsh modify /sys dns name-servers add { {{ F5_dns_servers | join (' ') }} }
+          log_and_run "Disabling GUI setup" tmsh modify sys global-settings gui-setup disabled
+          log_and_run "Setting GUI security banner" tmsh modify sys global-settings gui-security-banner-text "Configured via Cloud-Init!"
+          log_and_run "Modifying httpd ETag settings" tmsh modify /sys httpd include 'FileETag MTime Size'
+          log_and_run "icontrol SOAP mitigation" tmsh modify /sys icontrol-soap allow replace-all-with { }
+          log_and_run "global-setting remote host " tmsh modify sys global-settings remote-host add { null { hostname null addr 127.0.0.1 } }
+          log_and_run "Configuring Secure attribute for ASM cookies" /usr/share/ts/bin/add_del_internal add cookie_secure_attr 1
+          log_and_run "Configuring HttpOnly attribute for ASM cookies" /usr/share/ts/bin/add_del_internal add cookie_httponly_attr 1
+          log_and_run "Configuring SameSite attribute for ASM cookies" /usr/share/ts/bin/add_del_internal add ts_cookie_add_attrs SameSite=Strict
+          log_and_run "Enabling ASM to allow 20 MB file upload" /usr/share/ts/bin/add_del_internal add long_request_buffer_size 21000000
+          log_and_run "Enabling ASM to add long request" /usr/share/ts/bin/add_del_internal add long_request_mem_percentage 15
+          log_and_run "Enabling ASM to add Maximum concurrent request" /usr/share/ts/bin/add_del_internal add max_concurrent_long_request 120
+          echo "--- Configuring Device certificates ---" >> "$LOG_FILE"
+          log_and_run "Generating self-signed certificate" openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout /config/httpd/conf/ssl.key/server.key -out /config/httpd/conf/ssl.crt/server.crt -subj "/C=IN/ST=KA/L=BLR/O=Kodiak/OU=Server/CN={{ F5_hostname }}"
+          log_and_run "save the config" tmsh save /sys config
+      }
+
+      configure_gtm() {
+          log_and_run "Copying certificate for big3d" cp -f /config/httpd/conf/ssl.crt/server.crt /config/big3d/client.crt
+          log_and_run "Copying certificate for gtm" cp -f /config/httpd/conf/ssl.crt/server.crt /config/gtm/server.crt
+          log_and_run "Iquery minimum tls version " tmsh modify gtm global-settings general iquery-minimum-tls-version TLSv1.2
+          log_and_run "Iquery cipher list" tmsh modify gtm global-settings general iquery-cipher-list AESGCM:AES:!ADH:!AECDH:!PSK:!aECDH:!DSS:!ECDSA:!AES128:-SHA1:AES256-SHA
+      }
+
+      # Installs the Declarative Onboarding package and waits for the service to become available.
+      download_declarative_onboarding() {
+          RPM_URL="https://github.com/F5Networks/f5-declarative-onboarding/releases/download/v1.46.0/f5-declarative-onboarding-1.46.0-7.noarch.rpm"
+          mkdir -p "$DEST_DIR"
+
+          # Check if the RPM is already present before downloading
+          if [ -f "$RPM_PATH" ]; then
+              echo "INFO: Declarative Onboarding RPM found at $RPM_PATH. Skipping download." >> "$LOG_FILE"
+          else
+              echo "INFO: Downloading Declarative Onboarding RPM from $RPM_URL..." >> "$LOG_FILE"
+              log_and_run "Download DO RPM" curl -L --retry 5 --output "$RPM_PATH" "$RPM_URL"
+              echo "INFO: Download complete." >> "$LOG_FILE"
+          fi
+       }
+
+      install_declarative_onboarding() {
+          # Copy the declaration file from the location created by write_files.
+          cp /config/do_declaration.json "$DECLARATION_PATH"
+
+          echo "--- Installing and verifying Declarative Onboarding ---" >> "$LOG_FILE"
+          local data
+          data="{\"operation\":\"INSTALL\",\"packageFilePath\":\"$RPM_PATH\"}"
+          log_and_run "Installing Declarative Onboarding package" \
+            curl -kvu "$CREDS" "https://$IP/mgmt/shared/iapp/package-management-tasks" \
+            -H "Origin: https://$IP" -H 'Content-Type: application/json;charset=UTF-8' --data "$data"
+
+          echo "INFO: Waiting for DO service to become available..." >> "$LOG_FILE"
+          while ! curl -skf -u "$CREDS" --max-time 3 "https://$IP/mgmt/shared/declarative-onboarding/info" >/dev/null 2>&1; do
+            echo "INFO: DO service not ready yet, waiting 10 seconds..." >> "$LOG_FILE"
+            sleep 10
+          done
+          echo "INFO: DO service is now ready." >> "$LOG_FILE"
+      }
+
+      # Validates the DO JSON file and posts it to the BIG-IP.
+      post_do_declaration() {
+          echo "--- Validating and posting DO Declaration ---" >> "$LOG_FILE"
+          if [ ! -f "$DECLARATION_PATH" ]; then
+            echo "FATAL: DO declaration file not found at $DECLARATION_PATH" >> "$LOG_FILE"
+            exit 1
+          fi
+          log_and_run "Validating JSON syntax in $DECLARATION_PATH" jq -e . "$DECLARATION_PATH" > /dev/null
+          log_and_run "Posting DO Declaration" curl -sk --fail -u "$CREDS" -H "Content-Type: application/json" -d "@$DECLARATION_PATH" -X POST "https://$IP/mgmt/shared/declarative-onboarding?async=true"
+      }
+
+      usage() {
+          echo "Usage: $0 {all|setup|install}"
+          echo "  all:     Run the full configuration process (default for normal VMs)."
+          echo "  setup:   Run only the initial system and GTM configuration."
+          echo "  install: Run only the DO RPM installation and declaration posting."
+          exit 1
+      }
+
+      # --- Main Execution ---
+      main() {
+          echo "INFO: Starting custom cloud-init script with argument: ${1:-all}" >> "$LOG_FILE"
+          case "${1:-all}" in
+              all)
+                  echo "--- Executing all steps ---" >> "$LOG_FILE"
+                  configure_bigip_system
+                  configure_gtm
+                  download_declarative_onboarding
+                  install_declarative_onboarding
+                  post_do_declaration
+                  echo "INFO: Onboarding script finished successfully." >> "$LOG_FILE"
+                  ;;
+              setup)
+                  echo "--- Executing initial setup steps ---" >> "$LOG_FILE"
+                  configure_bigip_system
+                  configure_gtm
+                  echo "######################################################################" >> "$LOG_FILE"
+                  echo "PARTIAL COMPLETION: Initial system configuration is done." >> "$LOG_FILE"
+                  echo "ACTION REQUIRED: Please upload the DO RPM to $RPM_PATH" >> "$LOG_FILE"
+                  echo "Then, run this command to continue: /config/custom-config.sh install" >> "$LOG_FILE"
+                  echo "######################################################################" >> "$LOG_FILE"
+                  ;;
+              install)
+                  echo "--- Executing installation and declaration steps ---" >> "$LOG_FILE"
+                  install_declarative_onboarding
+                  post_do_declaration
+                  echo "INFO: Onboarding script finished successfully." >> "$LOG_FILE"
+                  ;;
+              *)
+                  usage
+                  ;;
+          esac
+      }
+
+      # Run the main function
+      main "$@"
+
+  - path: /config/do_declaration.json
+    permissions: '0644'
+    content: |
+      {
+        "schemaVersion": "1.0.0",
+        "class": "Device",
+        "async": true,
+        "label": "my BIG-IP declaration for declarative onboarding",
+        "Common": {
+            "class": "Tenant",
+            "mySystem": {
+                "class": "System",
+                "hostname": "{{ F5_hostname }}",
+                "cliInactivityTimeout": 1200,
+                "consoleInactivityTimeout": 1200,
+                "autoPhonehome": false
+            },
+{%- if item.f5_config is defined and item.f5_config.license_key is defined and F5_license_key | length > 0 %}
+            "myLicense": {
+                "class": "License",
+                "licenseType": "regKey",
+                "regKey": "{{ F5_license_key }}"
+            },
+{%- endif %}
+            "myHttpd": {
+                "class": "HTTPD",
+                "authPamIdleTimeout": 900,
+                "allow": ["all"],
+                "sslCiphersuite": ["ECDHE-RSA-AES128-GCM-SHA256","ECDHE-RSA-AES256-GCM-SHA384","ECDHE-ECDSA-AES128-GCM-SHA256","ECDHE-ECDSA-AES256-GCM-SHA384"],
+                "sslProtocol": "all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1"
+            },
+            "mySshd": {
+                "class": "SSHD",
+                "allow": ["all"],
+                "inactivityTimeout": 900,
+                "MACS": ["hmac-sha1"],
+                "ciphers": ["aes128-ctr","aes192-ctr","aes256-ctr"],
+                "kexAlgorithms": ["ecdh-sha2-nistp256","ecdh-sha2-nistp384","ecdh-sha2-nistp521","diffie-hellman-group14-sha1","diffie-hellman-group-exchange-sha256"]
+            },
+{%- if item.f5_config is defined and item.f5_config.ntp_servers is defined and F5_ntp_servers | length > 0 %}
+"myNtp": {
+                "class": "NTP",
+                "servers": {{ F5_ntp_servers | to_json }},
+{%- if item.f5_config.timezone is defined %}
+"timezone": "{{ F5_timezone }}"
+{%- else %}
+                "timezone": "UTC"
+{%- endif %}
+            },
+{%- endif %}
+            "kodiakf5": {
+                "class": "User",
+                "userType": "regular",
+                "password": "autofwf5@123#",
+                "shell": "bash",
+                "partitionAccess": {
+                    "all-partitions": {
+                        "role": "admin"
+                    }
+                }
+            },
+            "snmpCommunity": {
+               "class": "SnmpCommunity",
+               "name": "kodiakadmin",
+               "oid": ".1",
+               "access": "ro",
+               "source": "all"
+
+            },
+            "configSync": {
+               "class": "ConfigSync",
+               "configsyncIp": "{{ F5_intIP }}"
+            },
+            "failoverUnicast_1": {
+              "class": "FailoverUnicast",
+              "addressPorts": [
+                          { "address" : "{{ F5_intIP}}",
+                             "port": "1026"
+                          },
+                          { "address" : "{{ F5_mgmtIP.split('/')[0] }}",
+                            "port": "1026"
+                          }
+                ]
+            },
+{%- for ip, bridge in F5_selfIP_config %}
+{%- if loop.index > 1 %}
+"{{ bridge }}": {
+                "class": "VLAN",
+                "tag": {{ 4094 - loop.index }},
+                "mtu": 1500,
+                "interfaces": [
+                    {
+                        "name": "1.{{ loop.index - 1 }}",
+                        "tagged": false
+                    }
+                ]
+            },
+            "{{ bridge }}-selfip": {
+                "class": "SelfIp",
+                "address": "{{ ip }}",
+                "allowService": {% if loop.index == 2 %}[ "tcp:4353", "tcp:53", "udp:53"{% if item.f5_config is defined and item.f5_config.bgp_enabled is defined and item.f5_config.bgp_enabled == 1 %}, "tcp:179"{% endif %} ]{% elif loop.index == 3 %}[ "tcp:22", "udp:161", "tcp:161", "tcp:443" ]{% else %}"default"{% endif %},
+                "trafficGroup": "traffic-group-local-only",
+                "vlan": "{{ bridge }}"
+            },
+{%- endif %}
+{%- endfor %}
+{%- if item.f5_config is defined and item.f5_config.custom_routes is defined and F5_custom_routes | length > 0 %}
+{%- for route in F5_custom_routes %}
+            "route{{ loop.index }}": {
+                "class": "Route",
+                "network": "{{ route.network }}",
+                "gw": "{{ route.gw }}"
+            },
+{%- endfor %}
+{%- endif %}
+            "defaultRoute": {
+                "class": "Route",
+                "network": "default",
+                "gw": "{{ gateway[IpList[1]] }}"
+            },
+            "dbvars": {
+                "class": "DbVariables",
+                "setup.run": false,
+                "provision.tomcat.extramb": "256",
+                "provision.extramb": "2022",
+                "systemauth.disablerootlogin": true,
+                "big3d.minimum.tls.version": "TLSv1.2"
+            }
+        }
+      }
+
+# Run the startup script
+runcmd:
+  - /config/custom-config.sh {% if setup == 1  %}setup{% else %}all{% endif %} &
+

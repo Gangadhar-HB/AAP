@@ -1,0 +1,10 @@
+user: autoinstall
+password: kodiak
+# Cosign related variables
+default_yaml: "/etc/containers/registries.d/default.yaml"
+policy_json: "/etc/containers/policy.json"
+pub_key_path: "/etc/pki"
+repo_credentials_file: "/DGdata/Software/repo_credentials.json"
+cosign_failed_vms: "cosign_failed_vms.txt"
+cosign_role: "UPGRADE"
+

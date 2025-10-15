@@ -1,0 +1,190 @@
+# roles/create_ini/tasks/main.yml
+---
+#https://github.com/f5devcentral/tmos-cloudinit/blob/master/tmos_configdrive_builder/tmos_configdrive_builder.py)
+- name: Validate F5 specific configuration
+  block:
+    - name: Check if f5_config exists for F5 VM types
+      fail:
+        msg: "ERROR: f5_config section is required for F5 VM types but is missing"
+      when:
+        - "'F5' in vm_type"
+        - item.f5_config is not defined
+
+    - name: Validate minimum network interfaces
+      fail:
+        msg: "ERROR: At least 3 network interfaces required for F5 (management + external + internal)"
+      when:
+        - "'F5' in vm_type"
+        - item.networkInterface is not defined or item.networkInterface | length < 3
+
+  when: "'F5' in vm_type"
+
+
+
+- name: Check the BM thin-pool 
+  include_tasks: files/check_kpool.yml
+  when: "'F5' not in vm_type"
+
+- name: Get the network details
+  include_tasks: files/get_networkInfo.yml
+
+- block:
+    - set_fact:
+        F5_mgmtIP: "{{ IpList[0] }}"
+        F5_mgmtGW: "{{ gateway[IpList[0]] }}"
+        F5_intIP: "{{ IpList[2].split('/')[0] }}"
+        F5_allSelfIPs: "{{ IpList }}"
+        F5_allBridges: "{{ bridgeList }}"
+        F5_allGateways: "{{ gateway }}"
+        F5_selfIP_config: "{{ IpList | zip(bridgeList) | list }}"
+        F5_hostname: "{{ item.f5_config.hostname | default('') }}"
+        F5_license_key: "{{ item.f5_config.license_key | default('') }}"
+        F5_custom_routes: "{{ item.f5_config.custom_routes | default([]) }}"
+        F5_timezone: "{{ item.f5_config.timezone | default('UTC') }}"
+        F5_ntp_servers: "{{ item.f5_config.ntp_servers | default([]) }}"
+        F5_dns_servers: "{{ item.f5_config.dns_servers | default('') }}"
+        F5_config_exists: "{{ item.f5_config is defined }}"
+
+    - name: Display F5 configuration summary for verification
+      debug:
+        msg:
+          - "=== F5 Configuration Summary ==="
+          - "VM Name: {{ vm_name }}"
+          - "F5 Config Section: {{ 'Present' if F5_config_exists else 'Not defined (using defaults)' }}"
+          - "Hostname: {{ F5_hostname }}"
+          - "Management IP: {{ F5_mgmtIP }}"
+          - "Management Gateway: {{ F5_mgmtGW }}"
+          - "License Key: {{ 'Configured' if F5_license_key and F5_license_key | length > 0 else 'Not provided (trial mode)' }}"
+          - "Total Interfaces: {{ F5_allSelfIPs | length }}"
+          - "Data Interfaces: {{ (F5_allSelfIPs | length) - 1 }}"
+          - "Custom Routes: {{ F5_custom_routes | length }} defined"
+          - "Timezone: {{ F5_timezone }}"
+          - "NTP Servers: {{ F5_ntp_servers }} defined"
+          - "DNS Servers: {{ F5_dns_servers}} defined"
+ 
+    
+    - name: Create cloudini user-data for {{ vm_type }}
+      local_action: "command scp  /usr/local/bin/vmautomation-playbook/files/tmos_configdrive_builder.py  autoinstall@{{ item.hostip }}:/tmp"
+    
+    - name: Create a directory
+      file:
+        path: "{{ iso }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /configdrives
+        - /declarations
+      loop_control:
+        loop_var: iso
+      become: true
+      become_user: root
+
+    - name: generate cloudinit file for {{ vm_type }}
+      template:
+          src: "user_data.j2"
+          dest: "/declarations/user_data_{{ vm_name }}"
+      become: true
+      become_user: root
+    
+    - name: Run the F5 tmos confg-2 iso
+      command: "{{ commands }}"
+      loop:
+       - "chmod 755 /tmp/tmos_configdrive_builder.py"
+       - "python3 /tmp/tmos_configdrive_builder.py {{ vm_name }}"
+      loop_control:
+        loop_var: commands
+      become: true
+      become_user: root
+    - set_fact:
+       vm_name: "{{ vm_name }}"
+       vm_ram: "{{ item.vm_resource.ram }}"
+       vm_cpu: "{{ item.vm_resource.vcpu }}"
+       vm_disk_size: "{{ item.vm_resource.datadisksize }}"
+       vm_osdisk_size: "{{ item.os_disk  | default('10') }}"
+  
+  
+    - name: Create directory for F5 VM config
+      file:
+       path: "/usr/local/etc/vm_configs/{{ vm_name }}"
+       state: directory
+       owner: root
+       group: root
+       mode: '0755'
+      become: true
+ 
+    - name: Generate INI for "{{ vm_name }}" 
+      template:
+        src: "F5.ini.j2"
+        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
+      become: true
+      become_user: root
+  
+    - name: Generate INI for "{{ vm_name }}"
+      template:
+        src: "F5.ini.j2"
+        dest: "/usr/local/etc/{{ vm_name }}.ini"
+      become: true
+      become_user: root
+  
+  #when: "'F5' in vm_type and vm_name not in vm_present.stdout"
+  when: "'F5' in vm_type"
+
+- block:
+  - set_fact:
+      vm_name: "{{ vm_name }}"
+      vm_ram: "{{ item.vm_resource.ram }}"
+      vm_cpu: "{{ item.vm_resource.vcpu }}"
+      vm_disk_size: "{{ item.vm_resource.datadisksize }}"
+      vm_osdisk_size: "{{ item.os_disk  | default('10') }}"
+  
+  
+  - name: Create directory for VM config
+    file:
+     path: "/usr/local/etc/vm_configs/{{ vm_name }}"
+     state: directory
+     owner: root
+     group: root
+     mode: '0755'
+    become: true
+  
+  - block: 
+
+    - name: Generate INI for On-prem "{{ vm_name }}" 
+      template:
+        src: "vm.ini.j2"
+        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
+      become: true
+      become_user: root
+    
+    - name: Generate INI for On-prem  "{{ vm_name }}"
+      template:
+        src: "vm.ini.j2"
+        dest: "/usr/local/etc/{{ vm_name }}.ini"
+      become: true
+      become_user: root
+
+    when: effective_setup == "0"
+  - block: 
+
+    - name: Generate INI for wavelite "{{ vm_name }}" 
+      template:
+        src: "wavelite_vm.ini.j2"
+        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
+      become: true
+      become_user: root
+    
+    - name: Generate INI for wavelite  "{{ vm_name }}"
+      template:
+        src: "wavelite_vm.ini.j2"
+        dest: "/usr/local/etc/{{ vm_name }}.ini"
+      become: true
+      become_user: root
+
+    when: effective_setup == "1"
+
+  when: "'F5' not in vm_type"
+
+   
+

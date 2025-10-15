@@ -1,8 +1,0 @@
-network:
-  version: 2
-  ethernets:
-{% for iface in vm.networks %}
-    {{ iface.bridge }}:
-      addresses: [ "{{ iface.ip }}" ]
-{% endfor %}
-

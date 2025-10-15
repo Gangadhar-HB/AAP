@@ -1,0 +1,123 @@
+- hosts: all
+  gather_facts: no
+  vars_files:
+
+    - /usr/local/bin/vmautomation-playbook/input.yml
+  vars:
+    configured_vms: []
+    already_present: []
+    configured_vms_path: /usr/local/bin/vmautomation-playbook/configured_vms.txt
+  tasks:
+
+    - name: setup type
+      set_fact:
+        effective_setup: "{{ setup | default(0, true) }}"
+
+    - debug:
+        msg: "{{ 'Setup Type is On-Prem' if effective_setup == '0' else 'Setup Type is Wavelite' }}"
+
+    - name: Always validate input configuration
+      include_tasks: files/validate_input.yml
+      when: "'F5' in item.vm_type"
+      with_items: "{{ vms }}"
+      args:
+        apply:
+          delegate_to: "localhost"
+
+    - name: check vm is present
+      include_tasks: files/check_vmpresent.yml
+      args:
+        apply:
+         delegate_to: "{{ item.hostip }}"
+         run_once: true
+      with_items: "{{ vms }}"
+      loop_control:
+        loop_var: item
+
+    - name: check vm is present
+      include_tasks: files/check_vmconfigured.yml
+      args:
+        apply:
+          delegate_to: "{{ item.hostip }}"
+          run_once: true
+      with_items: "{{ vms }}"
+      loop_control:
+        loop_var: item
+      when: "'F5' not in item.vm_type"
+
+    - block:
+
+        - name: GenerateCfg
+          include_role:
+           name: create_cfg
+           apply:
+             delegate_to: "{{ item.hostip }}"
+             run_once: true
+          vars:
+            vm_type: "{{ item.vm_type }}"
+            vm_name: "{{ vm_to_rerun | default(item.name) }}"
+          when: ( 'F5' not in vm_type ) and  (item.name not in already_present and (vm_to_rerun is not defined or vm_to_rerun == item.name) )
+          with_items: "{{ vms }}"
+
+
+        - name: GenerateIni
+          include_role:
+           name: create_ini
+           apply:
+             delegate_to: "{{ item.hostip }}"
+             run_once: true
+          vars:
+            vm_type: "{{ item.vm_type }}"
+            vm_name: "{{ vm_to_rerun | default(item.name) }}"
+          when: item.name not in already_present and (vm_to_rerun is not defined or vm_to_rerun == item.name)
+          with_items: "{{ vms }}"
+
+        - name: LauchVM
+          include_role:
+           name: create_vm
+           apply:
+            delegate_to: "{{ delegate | default(item.hostip) }}"
+            run_once: true
+          vars:
+            vm_type: "{{ item.vm_type }}"
+            vm_name: "{{ vm_to_rerun | default(item.name) }}"
+          #when: item.name not in already_present and vm_to_rerun == "{{ item.name }}"
+          when: item.name not in already_present and (vm_to_rerun is not defined or vm_to_rerun == item.name)
+          with_items: "{{ vms }}"
+          ignore_errors: true
+
+        - name: Display VMs that are already present
+          debug:
+            msg: "The following VMs are already present: {{ already_present }}"
+          when: already_present is defined
+          run_once: true
+
+    - name: wait for 5 minutes for vm initialization to complete
+      wait_for:
+        timeout: 300
+      delegate_to: localhost
+      when: successful_vms is defined and (successful_vms | length) > 0
+
+    - name: Post VM Configuration
+      include_tasks: files/PostVMLaunch.yml
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: vm
+      vars:
+        vm_name: "{{ vm.name }}"
+        vm_type: "{{ vm.vm_type }}"
+        ansible_user: "{{ user }}"
+        ansible_password: "{{ password }}"
+      when: ( 'F5' not in vm_type ) and  ( vm.name not in failed_vms | default([])) and (vm.name not in configured_vms | default([]))
+
+    - name: Fail if failed VMs exist
+      fail:
+        msg: "Failed VMs list: {{ failed_vms | default([]) }}"
+      when: (failed_vms | default([])) | length > 0
+
+    - name: delete the configured_vms.txt file
+      become: yes
+      file:
+        path: "{{configured_vms_path}}"
+        state: absent
+
