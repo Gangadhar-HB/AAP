@@ -1,0 +1,38 @@
+---
+- name: "Generate configs and launch VM: {{ item.name }}"
+  block:
+    # Task 1: Generate CFG and INI Files using roles
+    - name: Include create_cfg role
+      ansible.builtin.include_role:
+        name: create_cfg
+      vars:
+        vm_name: "{{ item.name }}"
+        vm_type: "{{ item.vm_type }}"
+        item: "{{ item }}"
+
+    - name: Include create_ini role
+      ansible.builtin.include_role:
+        name: create_ini
+      vars:
+        vm_name: "{{ item.name }}"
+        vm_type: "{{ item.vm_type }}"
+        item: "{{ item }}"
+
+    # Task 2: Launch the VM (async)
+    - name: Include create_vm role
+      ansible.builtin.include_role:
+        name: create_vm
+      vars:
+        vm_name: "{{ item.name }}"
+        vm_type: "{{ item.vm_type }}"
+        item: "{{ item }}"
+      async: 1800
+      poll: 0
+      register: launch_job
+
+    - name: Store successful launch job ID
+      ansible.builtin.set_fact:
+        successful_vms: "{{ successful_vms | default([]) + [{'name': item.name, 'job_id': launch_job.ansible_job_id, 'hostip': item.hostip, 'vm_vars': item }] }}"
+
+  # The delegate_to is correctly placed on the block
+  delegate_to: "{{ item.hostip }}"
