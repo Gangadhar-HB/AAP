@@ -3,55 +3,61 @@
   hosts: localhost
   gather_facts: false
   vars:
-    vm_list: []          # Override with --extra-vars or YAML file
+    vm_list: []
     failed_vms: []
 
   tasks:
 
-    - name: Deploy all VMs
-      block:
+    - name: Create VMs locally
+      include_role:
+        name: create_vm
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: item
+      ignore_errors: yes
+      register: create_results
 
-        - name: Create VM locally
-          include_role:
-            name: create_vm
-          vars:
-            vm: "{{ item }}"
-          loop: "{{ vm_list }}"
-          loop_control:
-            loop_var: item
-          ignore_errors: yes
+    - name: Configure VMs on remote hosts
+      include_role:
+        name: configure_vm
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: item
+      ignore_errors: yes
+      register: configure_results
 
-        - name: Configure VM on remote host
-          include_role:
-            name: configure_vm
-          vars:
-            vm: "{{ item }}"
-          loop: "{{ vm_list }}"
-          loop_control:
-            loop_var: item
-          ignore_errors: yes
-          delegate_to: "{{ item.hostip }}"
+    - name: Harden VMs on remote hosts (optional)
+      include_role:
+        name: harden_vm
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: item
+      ignore_errors: yes
+      when: item.harden | default(false)
+      register: harden_results
 
-        - name: Harden VM on remote host (optional)
-          include_role:
-            name: harden_vm
-          vars:
-            vm: "{{ item }}"
-          loop: "{{ vm_list }}"
-          loop_control:
-            loop_var: item
-          ignore_errors: yes
-          when: item.harden | default(false)
-          delegate_to: "{{ item.hostip }}"
-
-      always:
-        - name: Collect failed VMs
-          set_fact:
-            failed_vms: "{{ failed_vms + [item.name] }}"
-          loop: "{{ vm_list }}"
-          loop_control:
-            loop_var: item
-          when: false  # You can implement proper failure tracking inside roles if needed
+    - name: Collect failed VMs
+      set_fact:
+        failed_vms: >-
+          {{ create_results.results
+             | selectattr('failed','defined')
+             | selectattr('failed')
+             | map(attribute='item.name') | list +
+             configure_results.results
+             | selectattr('failed','defined')
+             | selectattr('failed')
+             | map(attribute='item.name') | list +
+             harden_results.results
+             | selectattr('failed','defined')
+             | selectattr('failed')
+             | map(attribute='item.name') | list
+          }}
 
     - name: Report failed VMs
       debug:
