@@ -1,58 +1,68 @@
 ---
-name: Multi-VM Deployment Workflow
-description: Deploy multiple VMs using a single reusable workflow template
-variables:
-  - name: vm_list
-    description: List of VMs to deploy
-    type: list
-    required: true
+- name: Multi-VM Deployment
+  hosts: all
+  gather_facts: false
+  vars:
+    vm_list: []
+    failed_vms: []
 
-tasks:
+  tasks:
 
-  - name: Deploy each VM
-    loop: "{{ vm_list }}"
-    loop_control:
-      loop_var: vm
-      label: "{{ vm.name }}"
-    block:
+    - name: Create VMs
+      include_role:
+        name: create_vm
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: item
+      ignore_errors: yes
+      register: create_results
 
-      # ========================
-      # Step 1: Create VM
-      # ========================
-      - name: Create VM
-        include_role:
-          name: create_vm
-        vars:
-          vm: "{{ vm }}"
+    - name: Configure VMs
+      include_role:
+        name: configure_vm
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: item
+      ignore_errors: yes
+      register: configure_results
 
-      # ========================
-      # Step 2: Configure VM
-      # ========================
-      - name: Configure VM
-        include_role:
-          name: configure_vm
-        vars:
-          vm: "{{ vm }}"
+    - name: Harden VMs (optional)
+      include_role:
+        name: harden_vm
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: item
+      ignore_errors: yes
+      when: item.harden | default(false)
+      register: harden_results
 
-      # ========================
-      # Step 3: Harden VM (Optional)
-      # ========================
-      - name: Harden VM
-        include_role:
-          name: harden_vm
-        vars:
-          vm: "{{ vm }}"
-        when: vm.harden | default(false)
+    - name: Collect failed VMs
+      set_fact:
+        failed_vms: >-
+          {{ create_results.results
+             | selectattr('failed','defined')
+             | selectattr('failed')
+             | map(attribute='item.name')
+             | list +
+             configure_results.results
+             | selectattr('failed','defined')
+             | selectattr('failed')
+             | map(attribute='item.name')
+             | list +
+             harden_results.results
+             | selectattr('failed','defined')
+             | selectattr('failed')
+             | map(attribute='item.name')
+             | list
+          }}
 
-    rescue:
-      - name: Log failed VM
-        set_fact:
-          failed_vms: "{{ failed_vms | default([]) + [vm.name] }}"
-
-# ========================
-# Final Reporting
-# ========================
-  - name: Report failed VMs
-    debug:
-      msg: "The following VMs failed during deployment: {{ failed_vms | default([]) }}"
+    - name: Report failed VMs
+      debug:
+        msg: "The following VMs failed: {{ failed_vms }}"
 
