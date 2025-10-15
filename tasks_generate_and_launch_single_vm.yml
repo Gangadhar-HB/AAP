@@ -7,7 +7,7 @@
       vars:
         vm_name: "{{ item.name }}"
         vm_type: "{{ item.vm_type }}"
-        item: "{{ item }}"
+        # item: "{{ item }}"  <-- REMOVED THIS LINE
 
     - name: Include create_ini role
       ansible.builtin.include_role:
@@ -15,7 +15,7 @@
       vars:
         vm_name: "{{ item.name }}"
         vm_type: "{{ item.vm_type }}"
-        item: "{{ item }}"
+        # item: "{{ item }}"  <-- REMOVED THIS LINE
 
     - name: Include create_vm role to launch VM and get Job ID
       ansible.builtin.include_role:
@@ -23,13 +23,11 @@
       vars:
         vm_name: "{{ item.name }}"
         vm_type: "{{ item.vm_type }}"
-        item: "{{ item }}"
-      # We register the *entire result* of the role execution
+        # item: "{{ item }}"  <-- REMOVED THIS LINE
       register: create_vm_role_result
 
     - name: Store successful launch job ID
       ansible.builtin.set_fact:
-        # We access the job ID from the facts set *by the role*
         successful_vms: "{{ successful_vms | default([]) + [{'name': item.name, 'job_id': create_vm_role_result.ansible_facts.create_vm_job_id, 'hostip': item.hostip, 'vm_vars': item }] }}"
 
   delegate_to: "{{ item.hostip }}"
