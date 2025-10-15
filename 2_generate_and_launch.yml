@@ -3,11 +3,13 @@
 - hosts: localhost
   gather_facts: no
   vars:
+    # This list is passed in from the previous workflow step (pre-flight checks)
     vms_to_create: []
-    successful_vms: [] # Initialize the list here
+    # This list is built here and passed to the next workflow step (post-configure)
+    successful_vms: []
 
   tasks:
-    - name: Generate configurations and launch VMs
+    - name: Generate configurations and launch all VMs
       # This include_tasks will loop, running the wrapper file for each VM
       ansible.builtin.include_tasks: tasks_generate_and_launch_single_vm.yml
       loop: "{{ vms_to_create }}"
@@ -15,6 +17,7 @@
         loop_var: item
 
     - name: Set workflow facts for launched VMs
+      # This makes the list of successfully launched VMs available to the next job in the workflow
       ansible.builtin.set_stats:
         data:
           launched_vms: "{{ successful_vms | default([]) }}"
