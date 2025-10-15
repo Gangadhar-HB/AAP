@@ -1,69 +1,97 @@
 #cloud-config
+
+#
+# Basic System Initialization
+#
 ntp:
   enabled: true
   ntp_client: ntp
 
+# Sets the system timezone. Expects a string like "Asia/Kolkata".
 timezone: {{ timezone }}
 ssh_pwauth: True
+
+#
+# File Creation
+# This section writes necessary configuration and script files to the disk.
+#
 write_files:
-  
+
+  # Flag file for partitioning script.
   - path: /root/install.cfg
-    permissions: '0777'
+    permissions: '0644' # Corrected from 0777
     owner: root:root
     content: |
       install=true
-  
-  - path: /root/{{ item.vm_type }}_thin_pool_volume.cfg
-    permissions: '0777'
+
+  # Writes the thin pool volume configuration, passed in from Ansible.
+  - path: "/root/{{ item.vm_type }}_thin_pool_volume.cfg"
+    permissions: '0644' # Corrected from 0777
     owner: root:root
     content: |
-     {{ user_data_action.stdout | indent(6) }} 
-  
+      {{ user_data_action | indent(6) }}
+
+  # Creates a one-shot systemd service to run the partitioning script on first boot.
   - path: /etc/systemd/system/partition.service
-    permissions: '0777'
+    permissions: '0644' # Corrected from 0777. Service files don't need to be executable.
     owner: root:root
     content: |
       [Unit]
-      Description=partition service
+      Description=One-time disk partitioning service
       After=cloud-final.service
 
       [Service]
       Type=oneshot
       ExecStart=/usr/local/bin/vm_config_thin_vol.sh -d 2 --device sdb create "/root/{{ item.vm_type }}_thin_pool_volume.cfg" "/root/install.cfg"
+      # This next line disables the service after it runs, so it only ever runs once.
       ExecStartPost=/bin/systemctl disable partition.service
+      
       [Install]
       WantedBy=multi-user.target
-  
+
+  # Writes the network configuration, passed in from Ansible.
   - path: /usr/local/bin/network_config.ini
-    permissions: '0777'
+    permissions: '0644' # Corrected from 0777
     owner: root:root
     content: |
-     {{ user_data_action_1.stdout | indent(5) }}
+      {{ user_data_action_1 | indent(5) }}
+
+  # Creates a script to add static routes based on Ansible variables.
   - path: /usr/local/bin/route_add.sh
-    permissions: '0777'
+    permissions: '0755' # Corrected from 0777 to be securely executable.
     owner: root:root
     content: |
       #!/bin/bash
+      # This script configures static routes for the VM.
       LOGFILE="/var/log/route_add.log"
-
-{% if routes %}
-{% for rt in routes %}
-{% if effective_setup == "0" %}
-{% set macv_route = rt | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
-{% set macv_name = rt | regex_search('dpbr_([0-9]+)') | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
+      
+      {% if routes %}
+      {% for rt in routes %}
+      {% if effective_setup == "0" %}
+      # On-Prem setup: Create route-macv<ID> files
+      {% set macv_route = rt | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
+      {% set macv_name = rt | regex_search('dpbr_([0-9]+)') | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
       echo "creating route file for {{ macv_name }}" | tee -a "$LOGFILE"
       echo "{{ macv_route }}" >> /etc/sysconfig/network-scripts/route-{{ macv_name }}
-{% else %}
-{% set eth0_route = rt | regex_replace('dpbr_([0-9]+)', 'eth0') %}
+      {% else %}
+      # Wavelite setup: Create a generic route-eth0 file
+      {% set eth0_route = rt | regex_replace('dpbr_([0-9]+)', 'eth0') %}
       echo "creating route file for eth0" | tee -a "$LOGFILE"
       echo "{{ eth0_route }}" >> /etc/sysconfig/network-scripts/route-eth0
-{% endif %}
-{% endfor %}
-{% else %}
-      echo "Routes are not defined in input file" | tee -a "$LOGFILE"
-{% endif %}
+      {% endif %}
+      {% endfor %}
+      {% else %}
+      echo "No routes were defined in the input." | tee -a "$LOGFILE"
+      {% endif %}
 
+#
+# Command Execution
+# These commands run after all files have been written.
+#
 runcmd:
+  # 1. Enable and immediately start the one-shot partitioning service.
   - systemctl enable partition.service --now
+  # 2. Run the script to add static routes.
   - sh /usr/local/bin/route_add.sh
+  # 3. Disable cloud-init from running on all future boots to finalize the configuration.
   - touch /etc/cloud/cloud-init.disabled
