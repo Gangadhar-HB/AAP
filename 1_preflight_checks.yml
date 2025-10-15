@@ -1,28 +1,27 @@
 # 1_preflight_checks.yml
 ---
-- hosts: all
+- hosts: localhost
   gather_facts: no
-
-  #
-  # The 'vars_files' section is now removed.
-  # The playbook will use the variables provided by the AAP Job Template.
-  #
   vars:
-    configured_vms: []
-    already_present: []
     vms_to_create: []
-    configured_vms_path: /usr/local/bin/vmautomation-playbook/configured_vms.txt
+    already_present: [] # Assumes check_vmpresent.yml appends to this list
 
   tasks:
-
-    - name: Check for existing VMs and build creation list
-      # We loop over the WRAPPER file, not a block.
-      ansible.builtin.include_tasks: wrapper_check_vmpresent.yml
+    - name: Validate input for all defined VMs
+      # This task file should contain all your validation logic
+      ansible.builtin.include_tasks: files/validate_input.yml
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
 
-    - name: Finalize list of VMs to create
+    - name: Check which VMs are already present on the hypervisors
+      ansible.builtin.include_tasks: files/check_vmpresent.yml
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: item
+      delegate_to: "{{ item.hostip }}"
+
+    - name: Finalize list of VMs that need to be created
       ansible.builtin.set_fact:
         vms_to_create: "{{ vms_to_create + [item] }}"
       loop: "{{ vms }}"
@@ -34,7 +33,8 @@
       ansible.builtin.debug:
         var: vms_to_create
 
-    - name: Set workflow facts for VMs to be created
+    - name: Set workflow facts for the next job
       ansible.builtin.set_stats:
         data:
           vms_to_create: "{{ vms_to_create }}"
+          effective_setup: "{{ setup | default(0) }}"
