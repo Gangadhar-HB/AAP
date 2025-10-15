@@ -7,6 +7,7 @@
     vms_to_create: []
     # This list is built here and passed to the next workflow step (post-configure)
     successful_vms: []
+    effective_setup: "{{ setup | default(0) }}"
 
   tasks:
     - name: Generate configurations and launch all VMs
