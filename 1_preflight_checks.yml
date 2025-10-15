@@ -6,11 +6,6 @@
     already_present: [] # Assumes check_vmpresent.yml appends to this list
 
   tasks:
-    - name: Validate input for all defined VMs
-      ansible.builtin.include_tasks: files/validate_input.yml
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: item
 
     - name: Check which VMs are already present on the hypervisors
       # We now loop over the WRAPPER file.
