@@ -12,7 +12,6 @@
         vm_name: "{{ item.name }}"
         vm_type: "{{ item.vm_type }}"
         effective_setup: "{{ effective_setup | default(0) }}"
-        item: "{{ item }}" # The role can access the full VM object
 
     - name: Include create_ini role
       ansible.builtin.include_role:
@@ -20,7 +19,6 @@
       vars:
         vm_name: "{{ item.name }}"
         vm_type: "{{ item.vm_type }}"
-        item: "{{ item }}"
 
     - name: Include create_vm role to launch VM and get Job ID
       ansible.builtin.include_role:
@@ -28,7 +26,6 @@
       vars:
         vm_name: "{{ item.name }}"
         vm_type: "{{ item.vm_type }}"
-        item: "{{ item }}"
       register: create_vm_role_result
 
     - name: Store successful launch job ID
