@@ -3,28 +3,28 @@
   gather_facts: no
   vars:
     vms_to_create: []
-    already_present: [] # Assumes check_vmpresent.yml appends to this list
+    already_present: []
 
   tasks:
+    - name: Validate input for all defined VMs
+      ansible.builtin.include_tasks: files/validate_input.yml
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: item
 
-    - name: Check which VMs are already present on the hypervisors
-      # We now loop over the WRAPPER file.
+    - name: Check which VMs are already present
       ansible.builtin.include_tasks: wrapper_check_vmpresent.yml
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
 
-    - name: Finalize list of VMs that need to be created
+    - name: Finalize list of VMs to create
       ansible.builtin.set_fact:
         vms_to_create: "{{ vms_to_create + [item] }}"
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
       when: item.name not in (already_present | default([]))
-
-    - name: Announce which VMs will be created
-      ansible.builtin.debug:
-        var: vms_to_create
 
     - name: Set workflow facts for the next job
       ansible.builtin.set_stats:

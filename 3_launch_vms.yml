@@ -1,29 +1,14 @@
-# 3_launch_vms.yml
 ---
 - hosts: localhost
   gather_facts: no
   vars:
-    vms_to_create: []
     successful_vms: []
-
   tasks:
     - name: Launch all new VMs
-      block:
-        - name: Include create_vm role to launch VM and get Job ID
-          ansible.builtin.include_role:
-            name: create_vm
-          vars:
-            vm_name: "{{ item.name }}"
-          register: create_vm_role_result
-
-        - name: Store successful launch job ID
-          ansible.builtin.set_fact:
-            successful_vms: "{{ successful_vms + [{'name': item.name, 'ip_address': item.networkInterface[0].ipaddress|ipaddr('address'), 'job_id': create_vm_role_result.ansible_facts.create_vm_job_id, 'hostip': item.hostip}] }}"
-
+      ansible.builtin.include_tasks: wrapper_launch_vm.yml
       loop: "{{ vms_to_create }}"
       loop_control:
         loop_var: item
-      delegate_to: "{{ item.hostip }}"
 
     - name: Set workflow facts for the next job
       ansible.builtin.set_stats:

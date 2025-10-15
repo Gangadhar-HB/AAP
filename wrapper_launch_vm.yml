@@ -1,0 +1,13 @@
+---
+- name: "Delegate launch for {{ item.name }}"
+  block:
+    - name: Include create_vm role
+      ansible.builtin.include_role:
+        name: create_vm
+      vars:
+        vm_name: "{{ item.name }}"
+      register: create_vm_role_result
+    - name: Store successful launch job ID
+      ansible.builtin.set_fact:
+        successful_vms: "{{ successful_vms | default([]) + [{'name': item.name, 'ip_address': item.networkInterface[0].ipaddress|ipaddr('address'), 'job_id': create_vm_role_result.ansible_facts.create_vm_job_id, 'hostip': item.hostip}] }}"
+  delegate_to: "{{ item.hostip }}"

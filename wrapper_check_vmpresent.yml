@@ -1,11 +1,7 @@
 ---
-# This wrapper file's job is to correctly delegate the included tasks.
-- name: "Delegate presence check for {{ item.name }} to {{ item.hostip }}"
+- name: "Delegate presence check for {{ item.name }}"
   block:
-    - name: Include the actual check tasks
-      ansible.builtin.include_tasks: files/check_vmpresent.yml
+    - ansible.builtin.include_tasks: files/check_vmpresent.yml
       vars:
-        # Pass the current loop item to the included file
         vm: "{{ item }}"
-  # The delegate_to keyword is correctly placed on the block
   delegate_to: "{{ item.hostip }}"

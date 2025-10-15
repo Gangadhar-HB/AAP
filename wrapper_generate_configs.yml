@@ -1,0 +1,14 @@
+---
+- name: "Delegate config generation for {{ item.name }}"
+  block:
+    - name: Include create_cfg role
+      ansible.builtin.include_role:
+        name: create_cfg
+      vars:
+        vm_name: "{{ item.name }}"
+    - name: Include create_ini role
+      ansible.builtin.include_role:
+        name: create_ini
+      vars:
+        vm_name: "{{ item.name }}"
+  delegate_to: "{{ item.hostip }}"

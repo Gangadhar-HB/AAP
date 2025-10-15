@@ -1,27 +1,9 @@
-# 2_generate_configs.yml
 ---
 - hosts: localhost
   gather_facts: no
-  vars:
-    # These vars are passed in from the previous workflow step
-    vms_to_create: []
-    effective_setup: 0
-
   tasks:
     - name: Generate configurations for all new VMs
-      block:
-        - name: Include create_cfg role
-          ansible.builtin.include_role:
-            name: create_cfg
-          vars:
-            vm_name: "{{ item.name }}"
-
-        - name: Include create_ini role
-          ansible.builtin.include_role:
-            name: create_ini
-          vars:
-            vm_name: "{{ item.name }}"
+      ansible.builtin.include_tasks: wrapper_generate_configs.yml
       loop: "{{ vms_to_create }}"
       loop_control:
         loop_var: item
-      delegate_to: "{{ item.hostip }}"

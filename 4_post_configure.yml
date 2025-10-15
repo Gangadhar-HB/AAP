@@ -1,15 +1,12 @@
-# 4_post_configure.yml
 ---
 # Play 1: Wait for jobs and build dynamic inventory
 - hosts: localhost
   gather_facts: no
   vars:
-    launched_vms: []
     failed_vms: []
     successful_vms_final: []
-
   tasks:
-    - name: Wait for VM launch jobs to complete and collect results
+    - name: Wait for VM launch jobs to complete
       block:
         - name: Check async job status
           ansible.builtin.async_status:
@@ -19,16 +16,13 @@
           retries: 60
           delay: 30
           failed_when: job_result.rc != 0
-
         - name: Add VM to final success list
           ansible.builtin.set_fact:
             successful_vms_final: "{{ successful_vms_final + [item] }}"
-
       rescue:
         - name: Add VM to failed list
           ansible.builtin.set_fact:
             failed_vms: "{{ failed_vms + [item] }}"
-      
       loop: "{{ launched_vms }}"
       loop_control:
         loop_var: item
@@ -43,16 +37,13 @@
 # Play 2: Configure the new VMs
 - hosts: new_vms
   gather_facts: yes
-
   tasks:
     - name: Wait for SSH to be available
       ansible.builtin.wait_for_connection:
         delay: 20
         timeout: 300
-
     - name: Run Post VM Configuration
       ansible.builtin.include_tasks: files/PostVMLaunch.yml
-
     - name: Fail if any VMs failed to launch
       ansible.builtin.fail:
         msg: "The following VMs failed to launch or configure: {{ hostvars['localhost']['failed_vms'] }}"
