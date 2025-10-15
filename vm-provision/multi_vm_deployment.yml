@@ -1,0 +1,58 @@
+---
+name: Multi-VM Deployment Workflow
+description: Deploy multiple VMs using a single reusable workflow template
+variables:
+  - name: vm_list
+    description: List of VMs to deploy
+    type: list
+    required: true
+
+tasks:
+
+  - name: Deploy each VM
+    loop: "{{ vm_list }}"
+    loop_control:
+      loop_var: vm
+      label: "{{ vm.name }}"
+    block:
+
+      # ========================
+      # Step 1: Create VM
+      # ========================
+      - name: Create VM
+        include_role:
+          name: create_vm
+        vars:
+          vm: "{{ vm }}"
+
+      # ========================
+      # Step 2: Configure VM
+      # ========================
+      - name: Configure VM
+        include_role:
+          name: configure_vm
+        vars:
+          vm: "{{ vm }}"
+
+      # ========================
+      # Step 3: Harden VM (Optional)
+      # ========================
+      - name: Harden VM
+        include_role:
+          name: harden_vm
+        vars:
+          vm: "{{ vm }}"
+        when: vm.harden | default(false)
+
+    rescue:
+      - name: Log failed VM
+        set_fact:
+          failed_vms: "{{ failed_vms | default([]) + [vm.name] }}"
+
+# ========================
+# Final Reporting
+# ========================
+  - name: Report failed VMs
+    debug:
+      msg: "The following VMs failed during deployment: {{ failed_vms | default([]) }}"
+

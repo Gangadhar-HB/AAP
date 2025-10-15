@@ -1,0 +1,19 @@
+---
+- name: Launch VM
+  ansible.builtin.shell: |
+    sudo bash -x /usr/local/bin/vm_build_and_install.sh -d 4 -v RESTORE {{ vm.name }}
+  register: vm_creation_result
+  ignore_errors: true
+
+- name: Record failed VM if creation failed
+  set_fact:
+    failed_vms: "{{ failed_vms | default([]) + [vm.name] }}"
+  when: vm_creation_result.rc != 0
+
+- name: Wait for VM to respond (ping)
+  ansible.builtin.wait_for:
+    host: "{{ vm.host_ip }}"
+    port: 22
+    timeout: 300
+  when: vm_creation_result.rc == 0
+

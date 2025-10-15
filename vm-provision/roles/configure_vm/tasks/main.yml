@@ -1,0 +1,19 @@
+---
+- name: Set hostname
+  ansible.builtin.shell: |
+    sudo hostnamectl set-hostname {{ vm.name }}
+  delegate_to: "{{ vm.host_ip }}"
+
+- name: Configure network interfaces
+  ansible.builtin.template:
+    src: network.j2
+    dest: /etc/netplan/01-netcfg.yaml
+  delegate_to: "{{ vm.host_ip }}"
+  notify:
+    - Apply network config
+
+- name: Apply network configuration
+  ansible.builtin.shell: |
+    sudo netplan apply
+  delegate_to: "{{ vm.host_ip }}"
+

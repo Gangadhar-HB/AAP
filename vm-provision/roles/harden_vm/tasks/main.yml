@@ -1,0 +1,28 @@
+---
+- name: Update all packages
+  ansible.builtin.yum:
+    name: '*'
+    state: latest
+  delegate_to: "{{ vm.host_ip }}"
+
+- name: Ensure firewall is enabled and started
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+  delegate_to: "{{ vm.host_ip }}"
+
+- name: Disable root SSH login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PermitRootLogin'
+    line: 'PermitRootLogin no'
+    backup: yes
+  delegate_to: "{{ vm.host_ip }}"
+
+- name: Restart SSH service
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+  delegate_to: "{{ vm.host_ip }}"
+
