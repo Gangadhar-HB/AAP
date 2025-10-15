@@ -13,12 +13,6 @@
     configured_vms_path: /usr/local/bin/vmautomation-playbook/configured_vms.txt
 
   tasks:
-    - name: Validate input for each VM
-      # This task was correct, no changes needed here if it works
-      ansible.builtin.include_tasks: files/validate_input.yml
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: item
 
     - name: Check for existing VMs and build creation list
       # We loop over the WRAPPER file, not a block.
