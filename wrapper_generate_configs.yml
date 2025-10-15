@@ -1,4 +1,5 @@
 ---
+# This wrapper file handles the config generation for a SINGLE VM.
 - name: "Delegate config generation for {{ item.name }}"
   block:
     - name: Include create_cfg role
@@ -6,9 +7,14 @@
         name: create_cfg
       vars:
         vm_name: "{{ item.name }}"
+        vm_type: "{{ item.vm_type }}"
+
     - name: Include create_ini role
       ansible.builtin.include_role:
         name: create_ini
       vars:
         vm_name: "{{ item.name }}"
+        # ADD THIS LINE to pass the vm_type to the role
+        vm_type: "{{ item.vm_type }}"
+
   delegate_to: "{{ item.hostip }}"
