@@ -1,4 +1,3 @@
-# 1_preflight_checks.yml
 ---
 - hosts: localhost
   gather_facts: no
@@ -8,18 +7,17 @@
 
   tasks:
     - name: Validate input for all defined VMs
-      # This task file should contain all your validation logic
       ansible.builtin.include_tasks: files/validate_input.yml
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
 
     - name: Check which VMs are already present on the hypervisors
-      ansible.builtin.include_tasks: files/check_vmpresent.yml
+      # We now loop over the WRAPPER file.
+      ansible.builtin.include_tasks: wrapper_check_vmpresent.yml
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
-      delegate_to: "{{ item.hostip }}"
 
     - name: Finalize list of VMs that need to be created
       ansible.builtin.set_fact:

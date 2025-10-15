@@ -1,6 +1,6 @@
-# wrapper_check_vmpresent.yml
 ---
-- name: "Delegate the VM presence check for {{ item.name }}"
+# This wrapper file's job is to correctly delegate the included tasks.
+- name: "Delegate presence check for {{ item.name }} to {{ item.hostip }}"
   block:
     - name: Include the actual check tasks
       ansible.builtin.include_tasks: files/check_vmpresent.yml
