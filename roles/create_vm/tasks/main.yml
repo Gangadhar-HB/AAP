@@ -1,80 +1,68 @@
 ---
 # ======================================================================
-# Role: create_vm
-# Purpose: Launch a VM, handle failure cleanup, and record success/failure.
+# Role: create_vm (Stateless & Idempotent)
+# Purpose: Launch a single VM and return its status.
+# It does NOT modify shared variables to avoid race conditions.
 # ======================================================================
 
-- block:
-
+- name: "Task block for creating VM {{ vm_name }}"
+  block:
     # ----------------------------------------------------------
-    # 1️⃣ Launch the VM
+    # 1️⃣ Attempt to launch the VM
     # ----------------------------------------------------------
-    - name: "Launching VM {{ vm_name }}"
-      ansible.builtin.shell: >
-        sudo bash -x /usr/local/bin/vm_build_and_install.sh
-        -d 4 -v RESTORE {{ vm_name }}
+    - name: "Executing vm_build_and_install.sh for {{ vm_name }}"
+      ansible.builtin.shell:
+        cmd: >
+          sudo bash -x /usr/local/bin/vm_build_and_install.sh
+          -d 4 -v RESTORE {{ vm_name }}
       register: vm_creation_result
+      changed_when: true
+      failed_when: >
+        vm_creation_result.rc != 0 or
+        'virt-install command returned error' in vm_creation_result.stdout
+
+    # ----------------------------------------------------------
+    # 2️⃣ On Success: Wait for VM to be 'running'
+    # ----------------------------------------------------------
+    - name: "Wait for VM {{ vm_name }} to enter 'running' state"
+      ansible.builtin.command: "sudo virsh -c qemu:///system dominfo {{ vm_name }}"
+      register: vm_check
+      until: "'State:           running' in vm_check.stdout"
+      retries: 20
+      delay: 30
+      changed_when: false
+
+    # ----------------------------------------------------------
+    # 3️⃣ On Success: Set the final result object for this VM
+    # ----------------------------------------------------------
+    - name: "Set success result for {{ vm_name }}"
+      ansible.builtin.set_fact:
+        create_vm_result:
+          name: "{{ vm_name }}"
+          status: "success"
+          state: "running"
+          host: "{{ vm_info.hostip }}"
+
+  rescue:
+    # ----------------------------------------------------------
+    # 4️⃣ On Failure: This block runs if any task above fails
+    # ----------------------------------------------------------
+    - name: "Cleanup LVM partitions for failed VM {{ vm_name }}"
+      ansible.builtin.shell:
+        cmd: >
+          sudo lvremove /dev/{{ vg_name }}/{{ vm_name }}_part
+          /dev/{{ vg_name }}/{{ vm_name }}_vol -y
       ignore_errors: true
+      changed_when: false
 
     # ----------------------------------------------------------
-    # 2️⃣ Handle Failure
+    # 5️⃣ On Failure: Set the final result object for this VM
     # ----------------------------------------------------------
-    - block:
-        - name: "Append VM to failed list"
-          ansible.builtin.set_fact:
-            failed_vms: "{{ failed_vms | default([]) + [vm_name] }}"
-
-        - name: "Delete LVM partitions for failed VM (if created)"
-          ansible.builtin.shell: >
-            sudo lvremove /dev/{{ vg_name }}/{{ vm_name }}_part
-            /dev/{{ vg_name }}/{{ vm_name }}_vol -y
-          ignore_errors: true
-
-        - name: "Debug VM failure reason"
-          ansible.builtin.debug:
-            msg:
-              - "VM {{ vm_name }} failed to launch."
-              - "Error Output: {{ vm_creation_result.stderr | default('N/A') }}"
-              - "Return Code: {{ vm_creation_result.rc | default('unknown') }}"
-      when: vm_creation_result is not succeeded
-            or (vm_creation_result.stdout | regex_search('virt-install command returned error'))
-
-    # ----------------------------------------------------------
-    # 3️⃣ Handle Success
-    # ----------------------------------------------------------
-    - block:
-        - name: "Append VM to successful list"
-          ansible.builtin.set_fact:
-            successful_vms: "{{ successful_vms | default([]) + [vm_name] }}"
-
-        - name: "Check VM state via virsh"
-          ansible.builtin.shell: >
-            sudo virsh -c qemu:///system dominfo {{ vm_name }} |
-            grep "State" | awk '{ print $2 }'
-          register: vm_check
-          until: vm_check.stdout.find("running") != -1
-          retries: 20
-          delay: 30
-          ignore_errors: true
-
-        - name: "Store VM state in dictionary"
-          ansible.builtin.set_fact:
-            vm_state: "{{ vm_state | default({}) | combine({ vm_name: vm_check.stdout | default('unknown') }) }}"
-
-        - name: "Debug success summary"
-          ansible.builtin.debug:
-            msg:
-              - "✅ VM '{{ vm_name }}' launched successfully."
-              - "VM State : {{ vm_check.stdout | default('unknown') }}"
-              - "Successful VMs : {{ successful_vms }}"
-              - "VM States : {{ vm_state }}"
-      when: vm_creation_result is succeeded
-            and (vm_creation_result.stdout | regex_search('Domain creation completed'))
-
-# ----------------------------------------------------------
-# 4️⃣ Final Report
-# ----------------------------------------------------------
-- name: "List of failed VMs"
-  ansible.builtin.debug:
-    msg: "❌ Failed VMs: {{ failed_vms | default([]) }}"
-
+    - name: "Set failure result for {{ vm_name }}"
+      ansible.builtin.set_fact:
+        create_vm_result:
+          name: "{{ vm_name }}"
+          status: "failed"
+          return_code: "{{ vm_creation_result.rc | default('N/A') }}"
+          stderr: "{{ vm_creation_result.stderr | default('N/A') }}"
+          host: "{{ vm_info.hostip }}"
