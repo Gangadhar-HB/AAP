@@ -7,17 +7,17 @@
     async_jobs: []
     successful_vms: []
     failed_vms: []
+    vm_state: {}
 
   tasks:
-
-    # 1️⃣ Start all VMs asynchronously (non-blocking)
+    # 1️⃣ Start all VMs in background
     - name: Launch all VMs asynchronously
       ansible.builtin.include_tasks: launch_vm_task.yml
       loop: "{{ vms_to_create | from_yaml }}"
       loop_control:
         loop_var: vm_item
 
-    # 2️⃣ Wait for async jobs to finish
+    # 2️⃣ Wait for all async jobs to finish
     - name: Wait for all VM launch jobs to complete
       ansible.builtin.async_status:
         jid: "{{ item.job_id }}"
@@ -28,48 +28,51 @@
       delay: 30
       loop: "{{ async_jobs }}"
       loop_control:
-        label: "{{ item.vm.name }}"
+        label: "{{ item.name }}"
       ignore_errors: true
 
-    # 3️⃣ Process each job result and extract IP address
-    - name: Process VM results
+    # 3️⃣ Process each job result and capture name + IP
+    - name: Process VM results and capture name + primary IP
       ansible.builtin.set_fact:
         successful_vms: >-
           {{
             successful_vms +
             [{
-              'name': item.vm.name,
+              'name': item.item.name,
               'ip_address': (
-                item.vm.networkInterface
-                | selectattr('gw', 'defined')
-                | map(attribute='ipaddress')
-                | map('split', '/')
-                | map('first')
-                | first
+                (
+                  (vms_to_create | from_yaml)
+                  | selectattr('name', 'equalto', item.item.name)
+                  | map(attribute='networkInterface')
+                  | list
+                  | first
+                  | first
+                ).ipaddress.split('/')[0]
               )
             }]
-            if (item.rc is defined and item.rc == 0) else successful_vms
+            if item.rc == 0 else successful_vms
           }}
-        failed_vms: "{{ failed_vms + [item.vm.name] if (item.rc is defined and item.rc != 0) else failed_vms }}"
+        failed_vms: "{{ failed_vms + [item.item.name] if item.rc != 0 else failed_vms }}"
       loop: "{{ vm_results.results | default([]) }}"
       when: item.ansible_job_id is defined
 
-    # 4️⃣ Display final summary
+    # 4️⃣ Display summary
     - name: Final report
       ansible.builtin.debug:
         msg:
-          - "✅ Successful VMs (Name & IP): {{ successful_vms }}"
+          - "✅ Successful VMs: {{ successful_vms }}"
           - "❌ Failed VMs: {{ failed_vms }}"
 
-    # 5️⃣ Export workflow stats for AAP chaining
-    - name: Set workflow facts for next job
+    # 5️⃣ Export workflow stats
+    - name: Set workflow facts for the next job
       ansible.builtin.set_stats:
         data:
           launched_vms: "{{ successful_vms }}"
 
-    # 6️⃣ Save successful VM info to file
-    - name: Save successful VMs
+    # 6️⃣ Save successful VMs to JSON
+    - name: Save successful VMs locally
       copy:
-        content: "{{ successful_vms | to_json }}"
+        content: "{{ successful_vms | to_nice_json }}"
         dest: "/tmp/successful_vms.json"
+      delegate_to: localhost
 
