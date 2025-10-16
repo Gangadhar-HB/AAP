@@ -31,10 +31,25 @@
         label: "{{ item.name }}"
       ignore_errors: true
 
-    # 3️⃣ Process each job result
+    # 3️⃣ Process each job result and extract VM IP
     - name: Process VM results
       ansible.builtin.set_fact:
-        successful_vms: "{{ successful_vms + [item.item.name] if item.rc == 0 else successful_vms }}"
+        successful_vms: >-
+          {{
+            successful_vms +
+            [{
+              'name': item.item.name,
+              'ip_address': (
+                item.item.networkInterface
+                | selectattr('gw','defined')
+                | map(attribute='ipaddress')
+                | map('split','/')
+                | map('first')
+                | first
+              )
+            }]
+            if item.rc == 0 else successful_vms
+          }}
         failed_vms: "{{ failed_vms + [item.item.name] if item.rc != 0 else failed_vms }}"
       loop: "{{ vm_results.results | default([]) }}"
       when: item.ansible_job_id is defined
@@ -51,9 +66,11 @@
       ansible.builtin.set_stats:
         data:
           launched_vms: "{{ successful_vms }}"
-          
 
+    # 6️⃣ Save successful VMs locally
     - name: Save successful VMs
       copy:
         content: "{{ successful_vms | to_json }}"
         dest: "/tmp/successful_vms.json"
+      delegate_to: localhost
+
