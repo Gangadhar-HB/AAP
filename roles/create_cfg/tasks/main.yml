@@ -1,11 +1,10 @@
 ---
 - block:
-
-    # --- NETWORK CONFIGURATION ---
+    # TASK 1: Include network info
     - name: Include network details
-      ansible.builtin.include_tasks:
-        file: files/get_networkInfo.yml
+      ansible.builtin.include_tasks: files/get_networkInfo.yml
 
+    # TASK 2: Ensure VM config directory exists
     - name: Create directory for VM config
       ansible.builtin.file:
         path: "/usr/local/etc/vm_configs/{{ vm_name }}"
@@ -15,8 +14,8 @@
         mode: '0755'
       become: true
 
-    # --- PARTITION SIZES ---
-    - name: Set partition size facts
+    # TASK 3: Set partition sizes
+    - name: Set partition size facts for the VM
       ansible.builtin.set_fact:
         couchdata: "{{ item.vm_partition.couchdata_size | default(omit) }}"
         couchindex: "{{ item.vm_partition.couchindex_size | default(omit) }}"
@@ -29,79 +28,79 @@
         PostgresData: "{{ item.vm_partition.PostgresData_size | default(omit) }}"
         PostgresWal: "{{ item.vm_partition.PostgresWal_size | default(omit) }}"
         Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
-      when: item.vm_partition is defined and item.vm_partition | length > 0
 
-    # --- VM INFO FACT ---
+    # TASK 4: Set vm_info fact (for cloud-init)
     - name: Set vm_info fact for cloud-init template
       ansible.builtin.set_fact:
         vm_info:
           name: "{{ vm_name }}"
           type: "{{ item.vm_type }}"
-          ip: "{{ item.networkInterface[0].ipaddress | ipaddr('address') }}"
           hostname: "{{ vm_name }}"
           timezone: "{{ timezone | default('UTC') }}"
+          networkInterface: "{{ item.networkInterface }}"
 
-    # --- NETWORK CONFIGURATION FILES ---
+    # TASK 5: Generate network config file (On-prem)
     - block:
-        - name: Generate On-Prem network config
+        - name: Create On-prem network config
           ansible.builtin.template:
-            src: network_config.ini.j2
+            src: "roles/create_cfg/templates/network_config.ini.j2"
             dest: "/tmp/network_{{ vm_name }}.ini"
           become: true
 
-        - name: Read On-Prem network config content
+        - name: Slurp On-prem network config content
           ansible.builtin.slurp:
             src: "/tmp/network_{{ vm_name }}.ini"
+          register: user_data_action_1_onprem_slurp
           become: true
-          register: network_content_onprem
 
-        - name: Set network fact for On-Prem
+        - name: Set network config fact
           ansible.builtin.set_fact:
-            user_data_action_1: "{{ network_content_onprem.content | b64decode }}"
+            user_data_action_1: "{{ user_data_action_1_onprem_slurp.content | b64decode }}"
       when: effective_setup == "0"
 
+    # TASK 6: Generate network config file (Wavelite)
     - block:
-        - name: Generate Wavelite network config
+        - name: Create Wavelite network config
           ansible.builtin.template:
-            src: wavelite_network_config.ini.j2
+            src: "roles/create_cfg/templates/wavelite_network_config.ini.j2"
             dest: "/tmp/wavelite_network_{{ vm_name }}.ini"
           become: true
 
-        - name: Read Wavelite network config content
+        - name: Slurp Wavelite network config content
           ansible.builtin.slurp:
             src: "/tmp/wavelite_network_{{ vm_name }}.ini"
+          register: user_data_action_1_wavelite_slurp
           become: true
-          register: network_content_wavelite
 
-        - name: Set network fact for Wavelite
+        - name: Set network config fact
           ansible.builtin.set_fact:
-            user_data_action_1: "{{ network_content_wavelite.content | b64decode }}"
+            user_data_action_1: "{{ user_data_action_1_wavelite_slurp.content | b64decode }}"
       when: effective_setup == "1"
 
-    # --- THIN POOL CONFIGURATION ---
-    - name: Generate thin pool configuration files
+    # TASK 7: Generate thin pool config files
+    - name: Generate thin pool configuration (VM-specific)
       ansible.builtin.template:
         src: "{{ item.vm_type }}_thin_pool_volume.cfg.j2"
         dest: "/usr/local/etc/vm_configs/{{ vm_name }}/{{ item.vm_type }}_thin_pool_volume.cfg"
       become: true
 
-    - name: Generate secondary thin pool config path
+    - name: Generate thin pool configuration (global)
       ansible.builtin.template:
         src: "{{ item.vm_type }}_thin_pool_volume.cfg.j2"
         dest: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg"
       become: true
 
-    - name: Read thin pool config content
+    - name: Slurp thin pool config
       ansible.builtin.slurp:
         src: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg"
+      register: user_data_action_slurp
       become: true
-      register: thin_pool_content
 
-    - name: Set thin pool fact
+    - name: Set thin pool config fact
       ansible.builtin.set_fact:
-        user_data_action: "{{ thin_pool_content.content | b64decode }}"
+        user_data_action: "{{ user_data_action_slurp.content | b64decode }}"
 
-    # --- CLOUD-INIT ISO ---
+    # TASK 8: Create ISO directory
     - name: Create cloud-init ISO directory
       ansible.builtin.file:
         path: "/cloudinitiso/{{ vm_name }}"
@@ -111,19 +110,19 @@
         mode: '0755'
       become: true
 
+    # TASK 9: Generate cloud-init user-data and meta-data
     - name: Generate cloud-init user-data and meta-data
       ansible.builtin.template:
         src: "{{ file }}.j2"
         dest: "/cloudinitiso/{{ vm_name }}/{{ file }}"
-        vars:
-          vm_info: "{{ vm_info }}"
-      become: true
       loop:
         - user-data
         - meta-data
       loop_control:
         loop_var: file
+      become: true
 
+    # TASK 10: Create cloud-init ISO
     - name: Create cloud-init ISO image
       ansible.builtin.command:
         cmd: "genisoimage -output {{ vm_name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
