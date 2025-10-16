@@ -2,54 +2,39 @@
 - name: Launch multiple VMs in parallel
   hosts: all
   gather_facts: no
-  strategy: free
+  strategy: free     # allow independent parallel tasks per host
   vars:
     async_jobs: []
     successful_vms: []
     failed_vms: []
+    vm_state: {}
 
   tasks:
-    # 1️⃣ Launch all VMs asynchronously
+    # 1️⃣ Start all VMs in background
     - name: Launch all VMs asynchronously
       ansible.builtin.include_tasks: launch_vm_task.yml
       loop: "{{ vms_to_create | from_yaml }}"
       loop_control:
         loop_var: vm_item
-      register: launched_vms_results
 
     # 2️⃣ Wait for all async jobs to finish
     - name: Wait for all VM launch jobs to complete
       ansible.builtin.async_status:
-        jid: "{{ item.ansible_job_id }}"
-      delegate_to: "{{ item.item.hostip }}"
+        jid: "{{ item.job_id }}"
+      delegate_to: "{{ item.host }}"
       register: vm_results
       until: vm_results.finished
       retries: 100
       delay: 30
-      loop: "{{ launched_vms_results.results }}"
+      loop: "{{ async_jobs }}"
       loop_control:
-        label: "{{ item.item.name }}"
+        label: "{{ item.name }}"
       ignore_errors: true
 
-    # 3️⃣ Process each job result and extract VM IP
+    # 3️⃣ Process each job result
     - name: Process VM results
       ansible.builtin.set_fact:
-        successful_vms: >-
-          {{
-            successful_vms +
-            [{
-              'name': item.item.name,
-              'ip_address': (
-                item.item.networkInterface
-                | selectattr('gw','defined')
-                | map(attribute='ipaddress')
-                | map('split','/')
-                | map('first')
-                | first
-              )
-            }]
-            if item.rc == 0 else successful_vms
-          }}
+        successful_vms: "{{ successful_vms + [item.item.name] if item.rc == 0 else successful_vms }}"
         failed_vms: "{{ failed_vms + [item.item.name] if item.rc != 0 else failed_vms }}"
       loop: "{{ vm_results.results | default([]) }}"
       when: item.ansible_job_id is defined
@@ -58,7 +43,7 @@
     - name: Final report
       ansible.builtin.debug:
         msg:
-          - "✅ Successful VMs: {{ successful_vms | map(attribute='name') | list }}"
+          - "✅ Successful VMs: {{ successful_vms }}"
           - "❌ Failed VMs: {{ failed_vms }}"
 
     # 5️⃣ Export workflow stats
@@ -67,10 +52,11 @@
         data:
           launched_vms: "{{ successful_vms }}"
 
-    # 6️⃣ Save successfully launched VMs locally
-    - name: Save successful VMs locally
+    - name: Append successfully launched VMs to local list
+      set_fact:
+        successful_vms: "{{ successful_vms | default([]) + [{'name': vm_name, 'ip_address': vm_ip}] }}"
+
+    - name: Save successful VMs
       copy:
         content: "{{ successful_vms | to_json }}"
         dest: "/tmp/successful_vms.json"
-      delegate_to: localhost
-
