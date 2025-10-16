@@ -28,18 +28,15 @@
         groups: new_vms
       loop: "{{ successful_vms }}"
 
-# Play 2: Run Post VM Configuration on all new VMs asynchronously
+# Play 2: Run Post VM Configuration on all new VMs
 - hosts: new_vms
   gather_facts: no
   tasks:
 
-    - name: Wait for SSH to be available asynchronously
+    - name: Wait for SSH to become available
       wait_for_connection:
         delay: 10
         timeout: 300
-      async: 300
-      poll: 0
-      register: ssh_wait_job
 
     - name: Remove old SSH key from known_hosts
       delegate_to: localhost
