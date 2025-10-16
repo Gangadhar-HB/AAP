@@ -1,0 +1,11 @@
+# launch_vm_task.yml
+- name: "Launch VM {{ vm_name }} asynchronously"
+  ansible.builtin.include_role:
+    name: create_vm
+  vars:
+    vm_name: "{{ vm_name }}"
+    vm_info: "{{ vm_info }}"
+  async: 3600
+  poll: 0
+  register: vm_launch_job
+
