@@ -1,11 +1,16 @@
+---
 # launch_vm_task.yml
+# Launch a single VM asynchronously
+
 - name: "Launch VM {{ vm_name }} asynchronously"
-  ansible.builtin.include_role:
-    name: create_vm
-  vars:
-    vm_name: "{{ vm_name }}"
-    vm_info: "{{ vm_info }}"
+  ansible.builtin.shell: >
+    sudo bash -x /usr/local/bin/vm_build_and_install.sh -d 4 -v RESTORE {{ vm_name }}
   async: 3600
   poll: 0
-  register: vm_launch_job
+  register: async_result
+  ignore_errors: true
+
+- name: "Set VM async job ID fact"
+  set_fact:
+    create_vm_job_id: "{{ async_result.ansible_job_id }}"
 

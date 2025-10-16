@@ -1,55 +1,51 @@
 ---
 # wrapper_launch_vm.yml
-# Purpose: Launch multiple VMs in parallel using create_vm role in AAP UI
+# Purpose: Launch multiple VMs in parallel asynchronously and track their completion
 
-- name: Launch all VMs in parallel
-  ansible.builtin.include_tasks: launch_vm_task.yml
-  loop: "{{ vm_list }}"
-  loop_control:
-    loop_var: vm_item
+- hosts: localhost
+  gather_facts: no
   vars:
-    vm_name: "{{ vm_item.name }}"
-    vm_info: "{{ vm_item }}"
-  register: vm_async_results
+    successful_vms: []
+    failed_vms: []
 
-- name: "Store async job details for all VMs"
-  ansible.builtin.set_fact:
-    launched_vms: >-
-      {%- set vms = launched_vms | default([]) -%}
-      {%- for r in vm_async_results.results -%}
-        {%- set _ = vms.append({
-              'name': r.item.name,
-              'hostip': r.item.hostip,
-              'job_id': r.vm_launch_job.ansible_job_id
-        }) -%}
-      {%- endfor -%}
-      {{ vms }}
+  tasks:
 
-- name: "Wait for all VM async jobs to finish"
-  block:
-    - name: "Check async job status for {{ item.name }}"
-      ansible.builtin.async_status:
-        jid: "{{ item.job_id }}"
-      register: job_result
-      until: job_result.finished
-      retries: 60
-      delay: 30
-      failed_when: job_result.rc != 0
+    # -------------------------------------------------------------
+    # 1️⃣ Launch all VMs in parallel
+    # -------------------------------------------------------------
+    - name: "Launch each VM asynchronously"
+      ansible.builtin.include_tasks: launch_vm_task.yml
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: vm_item
+      vars:
+        vm_name: "{{ vm_item.name }}"
+        vm_info: "{{ vm_item }}"
+      register: vm_launch_results
 
-    - name: "Add VM to successful list"
-      ansible.builtin.set_fact:
-        successful_vms: "{{ successful_vms | default([]) + [item] }}"
-  rescue:
-    - name: "Add VM to failed list"
-      ansible.builtin.set_fact:
-        failed_vms: "{{ failed_vms | default([]) + [item] }}"
-  loop: "{{ launched_vms }}"
-  loop_control:
-    loop_var: item
+    - name: "Collect async job info from launched VMs"
+      set_fact:
+        launched_vms: >-
+          {%- set vms = [] -%}
+          {%- for r in vm_launch_results.results -%}
+            {%- set _ = vms.append({
+                  'name': r.item.name,
+                  'hostip': r.item.hostip,
+                  'job_id': r.ansible_facts.create_vm_job_id
+            }) -%}
+          {%- endfor -%}
+          {{ vms }}
 
-- name: "Debug final success/failure lists"
-  ansible.builtin.debug:
-    msg:
-      successful: "{{ successful_vms }}"
-      failed: "{{ failed_vms }}"
+    - name: "Debug launched VM jobs"
+      ansible.builtin.debug:
+        msg: "{{ launched_vms }}"
+
+    # -------------------------------------------------------------
+    # 2️⃣ Wait for async VM jobs to complete
+    # -------------------------------------------------------------
+    - name: "Wait for VM async jobs to finish"
+      ansible.builtin.include_tasks: wait_vm_async.yml
+      loop: "{{ launched_vms }}"
+      loop_control:
+        loop_var: item
 
