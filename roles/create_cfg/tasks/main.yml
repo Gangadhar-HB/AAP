@@ -1,12 +1,11 @@
 ---
 - block:
 
-    # Include network details
+    # --- NETWORK CONFIGURATION ---
     - name: Include network details
       ansible.builtin.include_tasks:
         file: files/get_networkInfo.yml
 
-    # Create VM config directory
     - name: Create directory for VM config
       ansible.builtin.file:
         path: "/usr/local/etc/vm_configs/{{ vm_name }}"
@@ -16,7 +15,7 @@
         mode: '0755'
       become: true
 
-    # Set partition size facts if available
+    # --- PARTITION SIZES ---
     - name: Set partition size facts
       ansible.builtin.set_fact:
         couchdata: "{{ item.vm_partition.couchdata_size | default(omit) }}"
@@ -32,7 +31,17 @@
         Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
       when: item.vm_partition is defined and item.vm_partition | length > 0
 
-    # --- NETWORK CONFIGURATION ---
+    # --- VM INFO FACT ---
+    - name: Set vm_info fact for cloud-init template
+      ansible.builtin.set_fact:
+        vm_info:
+          name: "{{ vm_name }}"
+          type: "{{ item.vm_type }}"
+          ip: "{{ item.networkInterface[0].ipaddress | ipaddr('address') }}"
+          hostname: "{{ vm_name }}"
+          timezone: "{{ timezone | default('UTC') }}"
+
+    # --- NETWORK CONFIGURATION FILES ---
     - block:
         - name: Generate On-Prem network config
           ansible.builtin.template:
@@ -49,7 +58,6 @@
         - name: Set network fact for On-Prem
           ansible.builtin.set_fact:
             user_data_action_1: "{{ network_content_onprem.content | b64decode }}"
-
       when: effective_setup == "0"
 
     - block:
@@ -68,7 +76,6 @@
         - name: Set network fact for Wavelite
           ansible.builtin.set_fact:
             user_data_action_1: "{{ network_content_wavelite.content | b64decode }}"
-
       when: effective_setup == "1"
 
     # --- THIN POOL CONFIGURATION ---
@@ -108,6 +115,8 @@
       ansible.builtin.template:
         src: "{{ file }}.j2"
         dest: "/cloudinitiso/{{ vm_name }}/{{ file }}"
+        vars:
+          vm_info: "{{ vm_info }}"
       become: true
       loop:
         - user-data
