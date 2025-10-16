@@ -1,13 +1,75 @@
 ---
-- name: "Delegate launch for {{ vm_item.name }}"
-  block:
-    - name: Include create_vm role
+# Playbook: parallel_vm_launch.yml
+# Purpose: Launch multiple VMs in parallel and track async jobs
+
+- hosts: localhost
+  gather_facts: no
+  vars:
+    successful_vms: []
+    failed_vms: []
+  tasks:
+
+    - name: "Launch all VMs in parallel"
       ansible.builtin.include_role:
         name: create_vm
+      loop: "{{ vm_list }}"
+      loop_control:
+        loop_var: vm_item
       vars:
         vm_name: "{{ vm_item.name }}"
         vm_info: "{{ vm_item }}"
-      register: create_vm_role_result
+      register: vm_launch_results
 
-  delegate_to: "{{ vm_item.hostip }}"
+    - name: "Store async job details"
+      ansible.builtin.set_fact:
+        launched_vms: >-
+          {{
+            launched_vms | default([]) + [{
+              'name': item.item.name,
+              'hostip': item.item.hostip,
+              'job_id': item.ansible_facts.create_vm_job_id
+            }]
+          }}
+      loop: "{{ vm_launch_results.results }}"
+      loop_control:
+        loop_var: item
+
+    - name: "Debug launched VM jobs"
+      ansible.builtin.debug:
+        msg: "{{ launched_vms }}"
+
+# -------------------------------------------------------------
+# Play 2: Wait for async VM jobs to finish and record success/failure
+# -------------------------------------------------------------
+- hosts: localhost
+  gather_facts: no
+  tasks:
+
+    - name: "Wait for VM async jobs to complete"
+      block:
+        - name: "Check async job status"
+          ansible.builtin.async_status:
+            jid: "{{ item.job_id }}"
+          register: job_result
+          until: job_result.finished
+          retries: 60
+          delay: 30
+          failed_when: job_result.rc != 0
+
+        - name: "Add VM to success list"
+          ansible.builtin.set_fact:
+            successful_vms: "{{ successful_vms | default([]) + [item] }}"
+      rescue:
+        - name: "Add VM to failure list"
+          ansible.builtin.set_fact:
+            failed_vms: "{{ failed_vms | default([]) + [item] }}"
+      loop: "{{ launched_vms }}"
+      loop_control:
+        loop_var: item
+
+    - name: "Debug success and failed VMs"
+      ansible.builtin.debug:
+        msg:
+          successful: "{{ successful_vms }}"
+          failed: "{{ failed_vms }}"
 

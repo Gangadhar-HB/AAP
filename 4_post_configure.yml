@@ -1,51 +1,39 @@
 ---
-# Play 1: Wait for jobs and build dynamic inventory
+# Playbook: post_vm_configure.yml
+# Purpose: Wait for SSH and run post-configuration on successfully launched VMs
+
 - hosts: localhost
   gather_facts: no
   vars:
     failed_vms: []
-    successful_vms_final: []
   tasks:
-    - name: Wait for VM launch jobs to complete
-      block:
-        - name: Check async job status
-          ansible.builtin.async_status:
-            jid: "{{ item.job_id }}"
-          register: job_result
-          until: job_result.finished
-          retries: 60
-          delay: 30
-          failed_when: job_result.rc != 0
-        - name: Add VM to final success list
-          ansible.builtin.set_fact:
-            successful_vms_final: "{{ successful_vms_final + [item] }}"
-      rescue:
-        - name: Add VM to failed list
-          ansible.builtin.set_fact:
-            failed_vms: "{{ failed_vms + [item] }}"
-      loop: "{{ launched_vms }}"
+
+    - name: "Build dynamic inventory for successful VMs"
+      ansible.builtin.add_host:
+        name: "{{ item.hostip }}"
+        groups: new_vms
+      loop: "{{ successful_vms }}"
       loop_control:
         loop_var: item
-      delegate_to: "{{ item.hostip }}"
 
-    - name: Create in-memory inventory group for new VMs
-      ansible.builtin.add_host:
-        name: "{{ item.ip_address }}"
-        groups: new_vms
-      loop: "{{ successful_vms_final }}"
-
-# Play 2: Configure the new VMs
 - hosts: new_vms
   gather_facts: yes
   tasks:
-    - name: Wait for SSH to be available
+
+    - name: "Wait for SSH to be available on new VMs"
       ansible.builtin.wait_for_connection:
         delay: 20
         timeout: 300
-    - name: Run Post VM Configuration
+
+    - name: "Run Post VM Configuration tasks"
       ansible.builtin.include_tasks: files/PostVMLaunch.yml
-    - name: Fail if any VMs failed to launch
+
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: "Fail if any VMs failed to configure"
       ansible.builtin.fail:
-        msg: "The following VMs failed to launch or configure: {{ hostvars['localhost']['failed_vms'] }}"
+        msg: "The following VMs failed to launch or configure: {{ failed_vms | default([]) }}"
       run_once: true
-      when: (hostvars['localhost']['failed_vms'] | default([])) | length > 0
+      when: failed_vms | length > 0
+
