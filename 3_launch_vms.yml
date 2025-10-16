@@ -38,6 +38,7 @@
           {{
             successful_vms +
             [{
+              'bm': item.item.hostip
               'name': item.item.name,
               'ip_address': (
                 (

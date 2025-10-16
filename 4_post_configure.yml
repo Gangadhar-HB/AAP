@@ -40,7 +40,6 @@
       copy:
         content: "{{ inventory_content }}"
         dest: "{{ inventory_file }}"
-      delegate_to: localhost
 
     - name: Show generated inventory
       debug:
