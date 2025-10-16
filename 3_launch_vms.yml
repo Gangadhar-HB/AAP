@@ -38,7 +38,14 @@
           {{
             successful_vms +
             [{
-              'bm': item.item.hostip,
+              'bm':
+                (
+                  (vms_to_create | from_yaml)
+                  | selectattr('name', 'equalto', item.item.name)
+                  | map(attribute='hostip')
+                  | list
+                  | first
+                ),
               'name': item.item.name,
               'ip_address': (
                 (
