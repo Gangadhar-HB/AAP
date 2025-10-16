@@ -51,7 +51,10 @@
       ansible.builtin.set_stats:
         data:
           launched_vms: "{{ successful_vms }}"
-          
+
+    - name: Append successfully launched VMs to local list
+      set_fact:
+        successful_vms: "{{ successful_vms | default([]) + [{'name': vm_name, 'ip_address': vm_ip}] }}"
 
     - name: Save successful VMs
       copy:
