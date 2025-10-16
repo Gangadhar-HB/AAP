@@ -1,7 +1,10 @@
 ---
-# Playbook: parallel_vm_launch.yml
+# Playbook: wrapper_launch_vm.yml
 # Purpose: Launch multiple VMs in parallel and track async jobs
 
+# -------------------------------------------------------------
+# Play 1: Launch all VMs in parallel
+# -------------------------------------------------------------
 - hosts: localhost
   gather_facts: no
   vars:
@@ -24,11 +27,11 @@
       ansible.builtin.set_fact:
         launched_vms: >-
           {{
-            launched_vms | default([]) + [{
+            launched_vms | default([]) + [ {
               'name': item.item.name,
               'hostip': item.item.hostip,
               'job_id': item.ansible_facts.create_vm_job_id
-            }]
+            } ]
           }}
       loop: "{{ vm_launch_results.results }}"
       loop_control:
@@ -39,35 +42,19 @@
         msg: "{{ launched_vms }}"
 
 # -------------------------------------------------------------
-# Play 2: Wait for async VM jobs to finish and record success/failure
+# Play 2: Wait for async VM jobs to finish and track success/failure
 # -------------------------------------------------------------
 - hosts: localhost
   gather_facts: no
   tasks:
 
-    - name: "Wait for VM async jobs to complete"
-      block:
-        - name: "Check async job status"
-          ansible.builtin.async_status:
-            jid: "{{ item.job_id }}"
-          register: job_result
-          until: job_result.finished
-          retries: 60
-          delay: 30
-          failed_when: job_result.rc != 0
-
-        - name: "Add VM to success list"
-          ansible.builtin.set_fact:
-            successful_vms: "{{ successful_vms | default([]) + [item] }}"
-      rescue:
-        - name: "Add VM to failure list"
-          ansible.builtin.set_fact:
-            failed_vms: "{{ failed_vms | default([]) + [item] }}"
+    - name: "Wait for each VM async job and track results"
+      ansible.builtin.include_tasks: tasks/check_async_vm.yml
       loop: "{{ launched_vms }}"
       loop_control:
         loop_var: item
 
-    - name: "Debug success and failed VMs"
+    - name: "Debug final success and failed VMs"
       ansible.builtin.debug:
         msg:
           successful: "{{ successful_vms }}"
