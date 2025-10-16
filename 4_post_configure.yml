@@ -1,59 +1,89 @@
 ---
-# Play 1: Build dynamic inventory from successful VMs
+# Play 1: Load successful VMs and create dynamic inventory
 - hosts: localhost
   gather_facts: no
   vars:
     failed_vms: []
-    successful_vms_final: "{{ successful_vms | default([]) }}"
   tasks:
+
+    - name: Load successful VMs from JSON file
+      slurp:
+        src: "/tmp/successful_vms.json"
+      register: successful_vms_file
+
+    - name: Set successful_vms fact
+      set_fact:
+        successful_vms: "{{ successful_vms_file.content | b64decode | from_json }}"
+
     - name: Ensure we have successful VMs
-      ansible.builtin.assert:
+      assert:
         that:
-          - successful_vms_final | length > 0
-        fail_msg: "No successful_vms found from previous playbook"
-        success_msg: "Found {{ successful_vms_final | length }} successful VMs for post configuration."
+          - successful_vms | length > 0
+        fail_msg: "No successful VMs found. Nothing to post-configure."
+        success_msg: "Found {{ successful_vms | length }} VMs to post-configure."
 
     - name: Add each VM IP to dynamic inventory group
-      ansible.builtin.add_host:
+      add_host:
         name: "{{ item.ip_address }}"
         groups: new_vms
-      loop: "{{ successful_vms_final }}"
+      loop: "{{ successful_vms }}"
 
-# Play 2: Run Post Configuration on all new VMs in parallel
+# Play 2: Run Post VM Configuration on all new VMs asynchronously
 - hosts: new_vms
   gather_facts: no
   tasks:
-    - name: Wait for SSH to be available
-      ansible.builtin.wait_for_connection:
+
+    - name: Wait for SSH to be available asynchronously
+      wait_for_connection:
         delay: 10
         timeout: 300
       async: 300
       poll: 0
       register: ssh_wait_job
 
-    - name: Run VM configuration scripts asynchronously
-      ansible.builtin.shell: sudo find /root/logs/vm_config_thin_vol.sh/ -type f -name "script*" 2>/dev/null && sudo bash /root/logs/vm_config_thin_vol.sh/*
-      async: 1800
-      poll: 0
-      register: vm_config_job
+    - name: Remove old SSH key from known_hosts
+      delegate_to: localhost
+      shell: ssh-keygen -R {{ inventory_hostname }}
       ignore_errors: true
 
-    - name: Wait for VM configuration scripts to complete
-      ansible.builtin.async_status:
-        jid: "{{ vm_config_job.ansible_job_id }}"
-      register: vm_config_result
-      until: vm_config_result.finished
+    - name: Add new SSH key to known_hosts
+      delegate_to: localhost
+      shell: ssh-keyscan -H {{ inventory_hostname }} >> ~/.ssh/known_hosts
+      ignore_errors: true
+
+    - name: Run PostVMLaunch tasks asynchronously
+      import_tasks: files/PostVMLaunch.yml
+      async: 1800
+      poll: 0
+      register: postvm_job
+      ignore_errors: true
+
+    - name: Wait for PostVMLaunch tasks to complete
+      async_status:
+        jid: "{{ postvm_job.ansible_job_id }}"
+      register: postvm_result
+      until: postvm_result.finished
       retries: 60
       delay: 30
       ignore_errors: true
 
-    - name: Fail if ERRORs are found in logs
-      ansible.builtin.shell: sudo grep -iE "ERROR" /root/logs/vm_config_thin_vol.sh/* || true
+    - name: Check for ERRORs in logs
+      shell: sudo grep -iE "ERROR" /root/logs/vm_config_thin_vol.sh/* || true
       register: vm_log_check
       failed_when: false
 
-    - name: Fail if errors present
-      ansible.builtin.fail:
+    - name: Fail VM if errors found
+      fail:
         msg: "Found ERROR(s) on VM {{ inventory_hostname }}:\n{{ vm_log_check.stdout }}"
       when: vm_log_check.stdout != ""
+
+# Play 3: Summary
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Final report
+      debug:
+        msg:
+          - "✅ Successful VMs: {{ successful_vms }}"
+          - "❌ Failed VMs: {{ failed_vms }}"
 

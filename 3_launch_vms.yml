@@ -52,3 +52,7 @@
         data:
           launched_vms: "{{ successful_vms }}"
 
+    - name: Save successful VMs
+      copy:
+        content: "{{ successful_vms | to_json }}"
+        dest: "/tmp/successful_vms.json"
