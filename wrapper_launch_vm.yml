@@ -1,19 +1,15 @@
-# wrapper_launch_vm.yml (Corrected)
 ---
-- name: "Delegate launch for {{ item.name }}"
+- name: "Delegate launch for {{ vm_item.name }}"
   block:
     - name: Include create_vm role
       ansible.builtin.include_role:
         name: create_vm
       vars:
-        vm_name: "{{ item.name }}"
+        vm_name: "{{ vm_item.name }}"
       register: create_vm_role_result
 
-    # THIS TASK IS THE FIX:
-    # It builds a list of complex objects (dictionaries), not just strings.
-    # Each object contains all the info needed by the next workflow step.
     - name: Store successful launch job ID and VM data
       ansible.builtin.set_fact:
-        successful_vms: "{{ successful_vms | default([]) + [{'name': item.name, 'ip_address': item.networkInterface[0].ipaddress|ipaddr('address'), 'job_id': create_vm_role_result.ansible_facts.create_vm_job_id, 'hostip': item.hostip}] }}"
+        successful_vms: "{{ successful_vms | default([]) + [{'name': vm_item.name, 'ip_address': vm_item.networkInterface[0].ipaddress | ipaddr('address'), 'job_id': create_vm_role_result.ansible_facts.create_vm_job_id, 'hostip': vm_item.hostip}] }}"
+  delegate_to: "{{ vm_item.hostip }}"
 
-  delegate_to: "{{ item.hostip }}"

@@ -1,4 +1,4 @@
-- hosts: localhost
+- hosts: all
   gather_facts: no
   vars:
     successful_vms: []
@@ -7,7 +7,7 @@
       ansible.builtin.include_tasks: wrapper_launch_vm.yml
       loop: "{{ vms_to_create | from_yaml }}"
       loop_control:
-        loop_var: item
+        loop_var: vm_item
 
     - name: Set workflow facts for the next job
       ansible.builtin.set_stats:
