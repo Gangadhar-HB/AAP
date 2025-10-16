@@ -1,47 +1,25 @@
 ---
-- name: "Launch multiple VMs in parallel (Wrapper)"
-  hosts: localhost
+- name: Launch multiple VMs in parallel
+  hosts: all
   gather_facts: no
+  vars:
+    successful_vms: []
+    failed_vms: []
+    vm_state: {}
+
   tasks:
-    - name: "Launch ansible-playbook for each VM in the background"
-      ansible.builtin.command: >-
-        ansible-playbook create_one_vm.yml --inventory {{ item.hostip }}, --extra-vars '{"vm_info": {{ item | to_json }} }'
-      args:
-        chdir: "{{ playbook_dir }}"
-      loop: "{{ vms_to_create }}"
-      async: 1800
-      poll: 0
-      register: vm_launch_jobs
-
-    - name: "Wait for all VM creation jobs to complete"
-      ansible.builtin.async_status:
-        jid: "{{ item.ansible_job_id }}"
-      loop: "{{ vm_launch_jobs.results }}"
-      register: vm_final_status
-      until: item.finished
-      retries: 60
-      delay: 30
+    - name: "Launch all new VMs"
+      ansible.builtin.include_tasks: launch_vm_task.yml
+      loop: "{{ vms_to_create | from_yaml }}"
       loop_control:
-        label: "{{ item.item.name }}"
+        loop_var: vm_item
 
-    # ======================================================================
-    # NEW: Aggregate results after all parallel jobs are done
-    # ======================================================================
-    - name: "Process and aggregate all job results"
-      ansible.builtin.set_fact:
-        all_results: "{{ vm_final_status.results | map(attribute='ansible_facts.create_vm_result') | list }}"
-
-    - name: "Create lists of successful and failed VMs"
-      ansible.builtin.set_fact:
-        successful_vms: "{{ all_results | selectattr('status', 'equalto', 'success') | list }}"
-        failed_vms: "{{ all_results | selectattr('status', 'equalto', 'failed') | list }}"
-
-    - name: "✅ Final Report: Successful VMs"
+    - name: "Final report of failed VMs"
       ansible.builtin.debug:
-        msg: "SUCCESS ({{ successful_vms | length }}): {{ successful_vms | map(attribute='name') | list }}"
-      when: successful_vms | length > 0
+        msg: "❌ Failed VMs: {{ failed_vms | default([]) }}"
 
-    - name: "❌ Final Report: Failed VMs"
-      ansible.builtin.debug:
-        var: failed_vms
-      when: failed_vms | length > 0
+    - name: "Set workflow facts for the next job"
+      ansible.builtin.set_stats:
+        data:
+          launched_vms: "{{ successful_vms }}"
+
