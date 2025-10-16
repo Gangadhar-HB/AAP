@@ -1,125 +1,114 @@
-- name: Initialize vm_ips dictionary
-  set_fact:
-    vm_ips: {}
+---
+# files/PostVMLaunch.yml
+# Purpose: Run post-launch checks and configuration on each VM (parallel-safe)
 
-- name: fetch IP address from the vlan having gateway
-  set_fact:
-     ip_with_gw: "{{item.ipaddress.split('/')[0]}}"
-  loop: "{{vm.networkInterface}}"
-  when: item.gw is defined and item.gw != ''
+- name: Initialize VM facts
+  ansible.builtin.set_fact:
+    vm_name: "{{ inventory_hostname }}"
+    vm_primary_ip: "{{ ansible_host | default(inventory_hostname) }}"
 
-- name: display ipaddress
-  debug:
-    msg: "{{ip_with_gw}}"
-
-
-- name: Build vm_ips dictionary from IP results
-  set_fact:
-    vm_ips: "{{ vm_ips | combine({ vm.name: ip_with_gw }) }}"
-
-
-- name: Wait for SSH (port 22) on all VM primary IPs
-  wait_for:
-    host: "{{ item.value }}"
+- name: Wait for SSH port to be open
+  ansible.builtin.wait_for:
     port: 22
+    host: "{{ vm_primary_ip }}"
     timeout: 300
     state: started
-  loop: "{{ vm_ips | dict2items }}"
-  loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
 
-- name: Remove old SSH key for VM from known_hosts
-  shell: ssh-keygen -R {{ item.value }}
+- name: Clean old SSH host key (local)
+  ansible.builtin.shell: ssh-keygen -R {{ vm_primary_ip }}
   delegate_to: localhost
   ignore_errors: true
-  loop: "{{ vm_ips | dict2items }}"
-  loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
 
-- name: Add new SSH key for VM to known_hosts
-  shell: ssh-keyscan -H {{ item.value }} >> ~/.ssh/known_hosts
+- name: Add VM SSH key to known_hosts (local)
+  ansible.builtin.shell: ssh-keyscan -H {{ vm_primary_ip }} >> ~/.ssh/known_hosts
   delegate_to: localhost
   ignore_errors: true
-  loop: "{{ vm_ips | dict2items }}"
-  loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
 
+# ============================
+# ✅ HEALTH & CONFIG CHECKS
+# ============================
 
-- name: Check if script file exists on each VM
-  shell: sudo find /root/logs/vm_config_thin_vol.sh/ -type f -name "script*" 2>/dev/null
-  delegate_to: "{{ item.value }}"
+- name: Check for configuration script on VM
+  ansible.builtin.find:
+    paths: /root/logs/vm_config_thin_vol.sh/
+    patterns: "script*"
+    recurse: no
   register: found_scripts
+  become: true
   ignore_errors: true
-  loop: "{{ vm_ips | dict2items }}"
-  loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
-  when: item.key not in (failed_vms | default([]))
 
-- name: Check logs on newly launched VM
-  shell: sudo grep -iE "ERROR" {{ item.1.stdout_lines | join(' ') }} || true
-  delegate_to: "{{ item.0.value }}"
-  register: vm_log_check
-  loop: "{{ vm_ips | dict2items | zip(found_scripts.results) | list }}"
-  loop_control:
-    label: "{{ item.0.key }}"
-  when:
-    - item.1.stdout_lines is defined
-    - item.1.stdout_lines | length > 0
+- name: Search logs for errors
+  ansible.builtin.shell: |
+    grep -iE "ERROR" {{ found_scripts.files | map(attribute='path') | join(' ') }} || true
+  register: log_errors
+  become: true
+  when: found_scripts.files | length > 0
 
-- name: Fail if ERRORs are found in logs
-  fail:
+- name: Fail if any errors are found in logs
+  ansible.builtin.fail:
     msg: |
-      Found ERROR(s) in logs on {{ item.0.key }} ({{ item.0.value }}):
-      {{ item.1.stdout_lines | join('\n') }}
+      ERROR(s) detected in logs on {{ vm_name }}:
+      {{ log_errors.stdout_lines | join('\n') }}
   when:
-    - item.1.stdout_lines is defined
-    - item.1.stdout_lines | length > 0
-  loop: "{{ vm_ips | dict2items | zip(vm_log_check.results) | list }}"
-  loop_control:
-    label: "{{ item.0.key }}"
+    - log_errors is defined
+    - log_errors.stdout is defined
+    - log_errors.stdout | trim | length > 0
 
-- block:
-  - name: Import all tasks from cosign_upg.yml and run on each VM via ip_with_gw
-    import_tasks: cosign_upg.yml
-    delegate_to: "{{ ip_with_gw }}"
-    become: yes
-    become_method: sudo
+# ============================
+# ✅ COSIGN CONFIG (optional)
+# ============================
 
-  - name: copy cosign_failed_vms to all VMs
-    copy:
-      src: "{{ cosign_failed_vms }}"
-      dest: "/DGdata/Software/{{ cosign_failed_vms | basename }}"
-      mode: '0644'
-    delegate_to: "{{ ip_with_gw }}"
-    become: yes
-    become_method: sudo
-  when: (repo_url is defined and repo_url is not none) and (cosign_pub_key_file is defined and cosign_pub_key_file is not none)
+- name: Run cosign upgrade if parameters provided
+  when:
+    - repo_url is defined
+    - cosign_pub_key_file is defined
+  block:
+    - name: Import cosign upgrade tasks
+      ansible.builtin.import_tasks: cosign_upg.yml
+      become: yes
 
-- name: not appling cosign if both repo_url and cosign_pub_key_file is not defined
-  debug:
-    msg: "Skipping cosign verification as repo_url and cosign_pub_key_file is not defined"
-  when: (repo_url is defined or repo_url is none) and (cosign_pub_key_file is defined or cosign_pub_key_file is none)
+    - name: Copy cosign_failed_vms to remote
+      ansible.builtin.copy:
+        src: "{{ cosign_failed_vms }}"
+        dest: "/DGdata/Software/{{ cosign_failed_vms | basename }}"
+        mode: '0644'
+      become: yes
+
+- name: Skipping cosign verification
+  ansible.builtin.debug:
+    msg: "Skipping cosign verification — parameters not defined"
+  when:
+    - repo_url is not defined or cosign_pub_key_file is not defined
+
+# ============================
+# ✅ NETWORK FIXES
+# ============================
 
 - name: Ensure 'dns' is appended to hosts line in /etc/nsswitch.conf
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/nsswitch.conf
     regexp: '^hosts:'
     line: "hosts:      files myhostname dns"
-  delegate_to: "{{ ip_with_gw }}"
   become: yes
 
 - name: Ensure nameserver 8.8.8.8 exists in /etc/resolv.conf
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/resolv.conf
     line: "nameserver 8.8.8.8"
     state: present
-  delegate_to: "{{ ip_with_gw }}"
   become: yes
 
-- name: Update a ConfigTxt file with VM name if config is successful
-  become: yes
-  lineinfile:
+# ============================
+# ✅ CONFIG RECORD
+# ============================
+
+- name: Update configured VM list
+  ansible.builtin.lineinfile:
     path: "{{ configured_vms_path }}"
     line: "{{ vm_name }}"
     create: yes
     state: present
+  delegate_to: localhost
+  become: yes
+  run_once: false   # Each host writes its own entry
+
