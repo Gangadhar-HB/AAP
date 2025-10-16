@@ -5,7 +5,7 @@
   tasks:
     - name: "Launch ansible-playbook for each VM in the background"
       ansible.builtin.command: >-
-        ansible-playbook create_one_vm.yml --extra-vars '{"vm_info": {{ item | to_json }} }'
+        ansible-playbook create_one_vm.yml --inventory {{ item.hostip }}, --extra-vars '{"vm_info": {{ item | to_json }} }'
       args:
         chdir: "{{ playbook_dir }}"
       loop: "{{ vms_to_create }}"

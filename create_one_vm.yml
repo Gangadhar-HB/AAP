@@ -2,7 +2,7 @@
 # This playbook is designed to be called by another playbook.
 # It receives variables via --extra-vars to launch a single VM.
 - name: "Create a single VM"
-  hosts: localhost
+  hosts: all
   gather_facts: no
   tasks:
     - name: "Include the create_vm role for {{ vm_info.name }}"
