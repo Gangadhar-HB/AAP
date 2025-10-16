@@ -1,5 +1,5 @@
 ---
-- hosts: localhost
+- hosts: all
   gather_facts: no
   vars:
     successful_vms_file: "/tmp/successful_vms.json"
