@@ -13,6 +13,11 @@
       loop_control:
         loop_var: item
 
+    # ADD THIS DEBUG TASK
+    - name: DEBUG | Show the final structure of vms_to_create
+      ansible.builtin.debug:
+        var: vms_to_create
+
     - name: Finalize list of VMs to create
       ansible.builtin.set_fact:
         vms_to_create: "{{ vms_to_create + [item] }}"
