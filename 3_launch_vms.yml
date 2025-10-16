@@ -74,5 +74,4 @@
       copy:
         content: "{{ successful_vms | to_nice_json }}"
         dest: "/tmp/successful_vms.json"
-      delegate_to: localhost
 
