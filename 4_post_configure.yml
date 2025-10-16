@@ -4,6 +4,9 @@
   gather_facts: no
   vars:
     failed_vms: []
+    bms: []              # List of BM IPs
+    bms_vms: {}          # Mapping of BM to its VMs
+    inventory_file: "/tmp/dynamic_inventory.ini"
   tasks:
 
     - name: Load successful VMs from JSON file
@@ -22,36 +25,41 @@
         fail_msg: "No successful VMs found. Nothing to post-configure."
         success_msg: "Found {{ successful_vms | length }} VMs to post-configure."
 
-    - name: Add each VM IP to dynamic inventory group
-      add_host:
-        name: "{{ item.ip_address }}"
-        groups: new_vms
+    - name: Prepare BM list and VM mapping
+      set_fact:
+        bms: "{{ bms | union([item.hostip]) }}"
+        bms_vms: "{{ bms_vms | combine({ item.hostip: (bms_vms[item.hostip] | default([])) + [ {'name': item.name, 'ip_address': item.ip_address} ] }) }}"
       loop: "{{ successful_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-# Play 2: Run Post VM Configuration on all new VMs
-- hosts: new_vms
-  gather_facts: no
-  tasks:
+    - name: Initialize inventory content
+      set_fact:
+        inventory_content: "[BM]\n{{ bms | join('\n') }}\n\n"
 
-    # 🕐 Wait 5 minutes before attempting SSH
-    - name: Wait 5 minutes for VM to finish booting
-      pause:
-        minutes: 5
-      when: successful_vms is defined and successful_vms | length > 0
+    - name: Add VM groups for each BM
+      set_fact:
+        inventory_content: "{{ inventory_content + '[VM_' + item.key + ']\n' + item.value | map(attribute='ip_address') | join('\n') + '\n\n' }}"
+      loop: "{{ bms_vms | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
 
-    # ✅ Fixed — no async here
-    - name: Wait for SSH to be available
-      wait_for_connection:
-        delay: 10
-        timeout: 300
-
-    - name: Remove old SSH key from known_hosts
+    - name: Save dynamic inventory file
+      copy:
+        content: "{{ inventory_content }}"
+        dest: "{{ inventory_file }}"
       delegate_to: localhost
-      shell: ssh-keygen -R {{ inventory_hostname }}
-      ignore_errors: true
 
-    - name: Add new SSH key to known_hosts
+    - name: Push dynamic inventory to AAP UI
+      shell: >
+        awx inventory update
+        --name "Dynamic_VM_Inventory"
+        --organization "Default"
+        --inventory-source "{{ inventory_file }}"
       delegate_to: localhost
-      shell: ssh-keyscan -H {{ inventory_hostname }} >> ~/.ssh/known_hosts
-      ignore_errors: true
+      register: aap_inventory_update
+      failed_when: aap_inventory_update.rc != 0
 
+    - name: Debug AAP update result
+      debug:
+        var: aap_inventory_update.stdout
