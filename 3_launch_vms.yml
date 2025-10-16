@@ -8,7 +8,7 @@
         ansible-playbook create_one_vm.yml --extra-vars '{"vm_info": {{ item | to_json }} }'
       args:
         chdir: "{{ playbook_dir }}"
-      loop: "{{ vm_list }}"
+      loop: "{{ vms_to_create }}"
       async: 1800
       poll: 0
       register: vm_launch_jobs
