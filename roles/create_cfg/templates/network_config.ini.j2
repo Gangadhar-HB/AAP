@@ -1,3 +1,7 @@
+# RHEL/CentOS network configuration generated from Ansible
+# VM: {{ vm_name }}
+# Effective setup: {{ effective_setup }}
+
 [Bridge0]
 name = oambr-int
 bootproto = dhcp
@@ -8,51 +12,78 @@ bridge = oambr-int
 
 [Bridge1]
 name = oambr-ext
+bootproto = dhcp
 
 [Eth1]
 name = oam-ext
 bridge = oambr-ext
 
 {% if Alias_Flag|int == 0 %}
-{% for bridge,Ip in bridgeList|zip(IpList+ [''] * (bridgeList|length - IpList|length)) %}
-{% set name = bridge   | regex_replace('^[^\\d]+', '') %}
-{% set bridge = bridge | regex_replace('[br_]','') %}
-[MacVlan{{ loop.index + 1 }}]
-name = macv{{ name }}
-parent = {{ bridge }}
+{% for bridge, Ip in bridgeList | zip(IpList + [''] * (bridgeList|length - IpList|length)) %}
+{% set idx = loop.index0 %}
+{% set name_only = bridge | regex_replace('^[^\\d]+', '') %}
+{% set bridge_clean = bridge | regex_replace('[br_]', '') %}
+
+[MacVlan{{ loop.index }}]
+name = macv{{ name_only }}
+parent = {{ bridge_clean }}
 {% if Ip %}
 ipaddr = {{ Ip }}
-{% if  gateway[Ip]  is defined %}
-gateway = {{ gateway[Ip]  }}
+{% if gateway[Ip] is defined %}
+gateway = {{ gateway[Ip] }}
 {% endif %}
 {% endif %}
 
-[Eth{{ loop.index + 1 }}]
-name = {{ bridge }}
+[Eth{{ idx + 2 }}]
+DEVICE=eth{{ idx + 2 }}
+ONBOOT=yes
+BOOTPROTO=static
+{% if Ip %}
+IPADDR={{ Ip.split('/')[0] }}
+PREFIX={{ Ip.split('/')[1] }}
+{% if gateway[Ip] is defined %}
+GATEWAY={{ gateway[Ip] }}
+{% endif %}
+{% endif %}
+DNS1={{ dns_servers[0] | default('8.8.8.8') }}
+DNS2={{ dns_servers[1] | default('8.8.4.4') }}
+NM_CONTROLLED=yes
 
 {% endfor %}
 
 {% else %}
 
-{% for bridge,Ip in AliasBridgeList|zip(IpList+ [''] * (AliasBridgeList|length - IpList|length)) %}
-{% set name = bridge   | regex_replace('^[^\\d]+', '') %}
-{% set bridge = bridge | regex_replace('[br_]','') %}
-[MacVlan{{ loop.index + 1 }}]
-name = macv{{ name }}
-parent = {{ bridge }}
+{% for bridge, Ip in AliasBridgeList | zip(IpList + [''] * (AliasBridgeList|length - IpList|length)) %}
+{% set idx = loop.index0 %}
+{% set name_only = bridge | regex_replace('^[^\\d]+', '') %}
+{% set bridge_clean = bridge | regex_replace('[br_]', '') %}
+
+[MacVlan{{ loop.index }}]
+name = macv{{ name_only }}
+parent = {{ bridge_clean }}
 {% if Ip %}
 ipaddr = {{ Ip }}
-{% if  gateway[Ip]  is defined %}
-gateway = {{ gateway[Ip]  }}
+{% if gateway[Ip] is defined %}
+gateway = {{ gateway[Ip] }}
 {% endif %}
 {% endif %}
 
-[Eth{{ loop.index + 1 }}]
-name = {{ bridge }}
+[Eth{{ idx + 2 }}]
+DEVICE=eth{{ idx + 2 }}
+ONBOOT=yes
+BOOTPROTO=static
+{% if Ip %}
+IPADDR={{ Ip.split('/')[0] }}
+PREFIX={{ Ip.split('/')[1] }}
+{% if gateway[Ip] is defined %}
+GATEWAY={{ gateway[Ip] }}
+{% endif %}
+{% endif %}
+DNS1={{ dns_servers[0] | default('8.8.8.8') }}
+DNS2={{ dns_servers[1] | default('8.8.4.4') }}
+NM_CONTROLLED=yes
 
 {% endfor %}
 
-
 {% endif %}
-
 

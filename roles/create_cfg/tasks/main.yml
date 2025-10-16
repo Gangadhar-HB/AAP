@@ -1,10 +1,7 @@
 ---
 - block:
-    # TASK 1: Converted to FQCN (Fully Qualified Collection Name)
-    - name: Include network details
-      ansible.builtin.include_tasks: files/get_networkInfo.yml
 
-    # TASK 2: Converted to FQCN
+    # Ensure VM config directory exists
     - name: Create directory for VM config
       ansible.builtin.file:
         path: "/usr/local/etc/vm_configs/{{ vm_name }}"
@@ -14,94 +11,65 @@
         mode: '0755'
       become: true
 
-    # TASK 3: Converted to FQCN
-    - name: Get the partition size from input
+    # Set partition size facts
+    - name: Set partition sizes
       ansible.builtin.set_fact:
-        couchdata: "{{ item.vm_partition.couchdata_size | default(omit) }}"
-        couchindex: "{{ item.vm_partition.couchindex_size | default(omit) }}"
-        DGdata: "{{ item.vm_partition.DGdata_size | default(omit) }}"
-        DGlogs: "{{ item.vm_partition.DGlogs_size | default(omit) }}"
-        Database: "{{ item.vm_partition.Database_size | default(omit) }}"
-        GridGainData: "{{ item.vm_partition.GridGainData_size | default(omit) }}"
-        GridGainDrFs: "{{ item.vm_partition.GridGainDrFs_size | default(omit) }}"
-        GridGainWal: "{{ item.vm_partition.GridGainWal_size | default(omit) }}"
-        PostgresData: "{{ item.vm_partition.PostgresData_size | default(omit) }}"
-        PostgresWal: "{{ item.vm_partition.PostgresWal_size | default(omit) }}"
-        Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
+        couchdata: "{{ vm_info.vm_partition.couchdata_size | default(omit) }}"
+        couchindex: "{{ vm_info.vm_partition.couchindex_size | default(omit) }}"
+        DGdata: "{{ vm_info.vm_partition.DGdata_size | default(omit) }}"
+        DGlogs: "{{ vm_info.vm_partition.DGlogs_size | default(omit) }}"
+        Database: "{{ vm_info.vm_partition.Database_size | default(omit) }}"
+        GridGainData: "{{ vm_info.vm_partition.GridGainData_size | default(omit) }}"
+        GridGainDrFs: "{{ vm_info.vm_partition.GridGainDrFs_size | default(omit) }}"
+        GridGainWal: "{{ vm_info.vm_partition.GridGainWal_size | default(omit) }}"
+        PostgresData: "{{ vm_info.vm_partition.PostgresData_size | default(omit) }}"
+        PostgresWal: "{{ vm_info.vm_partition.PostgresWal_size | default(omit) }}"
+        Recordings: "{{ vm_info.vm_partition.Recordings_size | default(omit) }}"
 
-    # BLOCK FOR ON-PREM SETUP
-    - block:
-        # TASK 4: Converted to FQCN, removed redundant 'become_user'
-        - name: create On-prem network file
-          ansible.builtin.template:
-            src: "roles/create_cfg/templates/network_config.ini.j2"
-            dest: "/tmp/network_{{ vm_name }}.ini"
-          become: true
-
-        # TASK 5: Replaced 'shell: cat' with the more secure and reliable 'slurp' module
-        - name: Get the content of On-prem cfg file
-          ansible.builtin.slurp:
-            src: "/tmp/network_{{ item.name }}.ini"
-          become: true
-          register: user_data_action_1_onprem_slurp
-
-        # TASK 6: Updated to decode the content from the 'slurp' module
-        - name: Set fact from On-prem file content
-          ansible.builtin.set_fact:
-            user_data_action_1: "{{ user_data_action_1_onprem_slurp.content | b64decode }}"
-
-      when: effective_setup == "0"
-
-    # BLOCK FOR WAVELITE SETUP
-    - block:
-        # TASK 7: Converted to FQCN, removed redundant 'become_user'
-        - name: create wavelite network file
-          ansible.builtin.template:
-            src: "roles/create_cfg/templates/wavelite_network_config.ini.j2"
-            dest: "/tmp/wavelite_network_{{ vm_name }}.ini"
-          become: true
-
-        # TASK 8: Replaced 'shell: cat' with 'slurp'
-        - name: Get the content of wavelite cfg file
-          ansible.builtin.slurp:
-            src: "/tmp/wavelite_network_{{ item.name }}.ini"
-          become: true
-          register: user_data_action_1_wavelite_slurp
-
-        # TASK 9: Updated to decode the content from 'slurp'
-        - name: Set fact from wavelite file content
-          ansible.builtin.set_fact:
-            user_data_action_1: "{{ user_data_action_1_wavelite_slurp.content | b64decode }}"
-
-      when: effective_setup == "1"
-
-    # TASK 10 & 11: Converted to FQCN. These tasks are redundant but converted individually as requested.
-    # A loop would be more efficient here.
-    - name: Generate thin pool configuration files (Destination 1)
+    # On-prem or Wavelite network templates
+    - name: Create network config
       ansible.builtin.template:
-        src: "{{ item.vm_type }}_thin_pool_volume.cfg.j2"
-        dest: "/usr/local/etc/vm_configs/{{ vm_name }}/{{ item.vm_type }}_thin_pool_volume.cfg"
+        src: >-
+          {{ 'roles/create_cfg/templates/wavelite_network_config.ini.j2'
+             if effective_setup == '1'
+             else 'roles/create_cfg/templates/network_config.ini.j2' }}
+        dest: "/tmp/network_{{ vm_name }}.ini"
       become: true
 
-    - name: Generate thin pool configuration files (Destination 2)
-      ansible.builtin.template:
-        src: "{{ item.vm_type }}_thin_pool_volume.cfg.j2"
-        dest: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg"
-      become: true
-
-    # TASK 12: Replaced 'shell: cat' with 'slurp'
-    - name: Get the content of cfg file
+    - name: Slurp network config content
       ansible.builtin.slurp:
-        src: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg"
+        src: "/tmp/network_{{ vm_name }}.ini"
       become: true
-      register: user_data_action_slurp
-      
-    # This set_fact task demonstrates how you would use the slurped content.
-    - name: Set final thin pool config fact
-      ansible.builtin.set_fact:
-        user_data_action: "{{ user_data_action_slurp.content | b64decode }}"
+      register: network_file_content
 
-    # TASK 13: Converted to FQCN
+    - name: Decode network config content
+      ansible.builtin.set_fact:
+        user_data_action_1: "{{ network_file_content.content | b64decode }}"
+
+    # Thin pool config files
+    - name: Generate thin pool configuration (per VM)
+      ansible.builtin.template:
+        src: "{{ vm_info.vm_type }}_thin_pool_volume.cfg.j2"
+        dest: "/usr/local/etc/vm_configs/{{ vm_name }}/{{ vm_info.vm_type }}_thin_pool_volume.cfg"
+      become: true
+
+    - name: Generate thin pool configuration (common)
+      ansible.builtin.template:
+        src: "{{ vm_info.vm_type }}_thin_pool_volume.cfg.j2"
+        dest: "/usr/local/etc/{{ vm_info.vm_type }}_thin_pool_volume.cfg"
+      become: true
+
+    - name: Slurp thin pool config
+      ansible.builtin.slurp:
+        src: "/usr/local/etc/{{ vm_info.vm_type }}_thin_pool_volume.cfg"
+      become: true
+      register: thin_pool_content
+
+    - name: Set thin pool config fact
+      ansible.builtin.set_fact:
+        user_data_action: "{{ thin_pool_content.content | b64decode }}"
+
+    # Cloud-init ISO
     - name: Create directory for ISO
       ansible.builtin.file:
         path: "/cloudinitiso/{{ vm_name }}"
@@ -111,8 +79,7 @@
         mode: '0755'
       become: true
 
-    # TASK 14: Converted to FQCN, removed redundant 'become_user'
-    - name: generate cloudinit file for {{ item.vm_type }}
+    - name: Generate cloud-init templates
       ansible.builtin.template:
         src: "{{ file }}.j2"
         dest: "/cloudinitiso/{{ vm_name }}/{{ file }}"
@@ -123,9 +90,9 @@
       loop_control:
         loop_var: file
 
-    # TASK 15: Replaced 'shell' with the safer 'command' module and 'chdir' parameter
-    - name: Run the VM tmos confg-2 iso
+    - name: Generate cloud-init ISO
       ansible.builtin.command:
         cmd: "genisoimage -output {{ vm_name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
         chdir: "/cloudinitiso/{{ vm_name }}"
       become: true
+

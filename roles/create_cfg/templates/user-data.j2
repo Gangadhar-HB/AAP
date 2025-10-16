@@ -7,33 +7,31 @@ ntp:
   enabled: true
   ntp_client: ntp
 
-# Sets the system timezone. Expects a string like "Asia/Kolkata".
 timezone: {{ timezone }}
 ssh_pwauth: True
 
 #
 # File Creation
-# This section writes necessary configuration and script files to the disk.
 #
 write_files:
 
-  # Flag file for partitioning script.
+  # Flag file for partitioning script
   - path: /root/install.cfg
-    permissions: '0644' # Corrected from 0777
+    permissions: '0644'
     owner: root:root
     content: |
       install=true
 
-  # Writes the thin pool volume configuration, passed in from Ansible.
+  # Thin pool volume configuration
   - path: "/root/{{ item.vm_type }}_thin_pool_volume.cfg"
-    permissions: '0644' # Corrected from 0777
+    permissions: '0644'
     owner: root:root
     content: |
       {{ user_data_action | indent(6) }}
 
-  # Creates a one-shot systemd service to run the partitioning script on first boot.
+  # One-shot systemd partitioning service
   - path: /etc/systemd/system/partition.service
-    permissions: '0644' # Corrected from 0777. Service files don't need to be executable.
+    permissions: '0644'
     owner: root:root
     content: |
       [Unit]
@@ -43,55 +41,63 @@ write_files:
       [Service]
       Type=oneshot
       ExecStart=/usr/local/bin/vm_config_thin_vol.sh -d 2 --device sdb create "/root/{{ item.vm_type }}_thin_pool_volume.cfg" "/root/install.cfg"
-      # This next line disables the service after it runs, so it only ever runs once.
       ExecStartPost=/bin/systemctl disable partition.service
-      
+
       [Install]
       WantedBy=multi-user.target
 
-  # Writes the network configuration, passed in from Ansible.
-  - path: /usr/local/bin/network_config.ini
-    permissions: '0644' # Corrected from 0777
+  # Network interfaces
+{% for iface in vm_info.networkInterface %}
+  - path: "/etc/sysconfig/network-scripts/ifcfg-eth{{ loop.index0 }}"
+    permissions: '0644'
     owner: root:root
     content: |
-      {{ user_data_action_1 | indent(5) }}
+      DEVICE=eth{{ loop.index0 }}
+      ONBOOT=yes
+      BOOTPROTO=static
+      IPADDR={{ iface.ipaddress.split('/')[0] }}
+      PREFIX={{ iface.ipaddress.split('/')[1] }}
+      {% if iface.gw is defined %}
+      GATEWAY={{ iface.gw }}
+      {% endif %}
+      DNS1={{ dns_servers[0] | default('8.8.8.8') }}
+      DNS2={{ dns_servers[1] | default('8.8.4.4') }}
+      NM_CONTROLLED=yes
+{% endfor %}
 
-  # Creates a script to add static routes based on Ansible variables.
+  # Create route script
   - path: /usr/local/bin/route_add.sh
-    permissions: '0755' # Corrected from 0777 to be securely executable.
+    permissions: '0755'
     owner: root:root
     content: |
       #!/bin/bash
-      # This script configures static routes for the VM.
       LOGFILE="/var/log/route_add.log"
-      
+
       {% if routes %}
       {% for rt in routes %}
       {% if effective_setup == "0" %}
-      # On-Prem setup: Create route-macv<ID> files
-      {% set macv_route = rt | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
-      {% set macv_name = rt | regex_search('dpbr_([0-9]+)') | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
-      echo "creating route file for {{ macv_name }}" | tee -a "$LOGFILE"
-      echo "{{ macv_route }}" >> /etc/sysconfig/network-scripts/route-{{ macv_name }}
+      MACV_NAME=$(echo {{ rt }} | sed 's/dpbr_/macv/')
+      echo "Creating route file for $MACV_NAME" | tee -a "$LOGFILE"
+      echo "$MACV_NAME" >> /etc/sysconfig/network-scripts/route-$MACV_NAME
       {% else %}
-      # Wavelite setup: Create a generic route-eth0 file
-      {% set eth0_route = rt | regex_replace('dpbr_([0-9]+)', 'eth0') %}
-      echo "creating route file for eth0" | tee -a "$LOGFILE"
-      echo "{{ eth0_route }}" >> /etc/sysconfig/network-scripts/route-eth0
+      echo "Creating route file for eth0" | tee -a "$LOGFILE"
+      echo "{{ rt | regex_replace('dpbr_([0-9]+)','eth0') }}" >> /etc/sysconfig/network-scripts/route-eth0
       {% endif %}
       {% endfor %}
       {% else %}
-      echo "No routes were defined in the input." | tee -a "$LOGFILE"
+      echo "No routes defined" | tee -a "$LOGFILE"
       {% endif %}
 
 #
 # Command Execution
-# These commands run after all files have been written.
 #
 runcmd:
-  # 1. Enable and immediately start the one-shot partitioning service.
+  # Enable and run the partition service
   - systemctl enable partition.service --now
-  # 2. Run the script to add static routes.
+
+  # Add static routes
   - sh /usr/local/bin/route_add.sh
-  # 3. Disable cloud-init from running on all future boots to finalize the configuration.
+
+  # Disable cloud-init for future boots
   - touch /etc/cloud/cloud-init.disabled
+
