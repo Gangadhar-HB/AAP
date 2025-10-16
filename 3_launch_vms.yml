@@ -2,33 +2,33 @@
 - name: Launch multiple VMs in parallel
   hosts: all
   gather_facts: no
-  strategy: free     # allow independent parallel tasks per host
+  strategy: free
   vars:
     async_jobs: []
     successful_vms: []
     failed_vms: []
-    vm_state: {}
 
   tasks:
-    # 1️⃣ Start all VMs in background
+    # 1️⃣ Launch all VMs asynchronously
     - name: Launch all VMs asynchronously
       ansible.builtin.include_tasks: launch_vm_task.yml
       loop: "{{ vms_to_create | from_yaml }}"
       loop_control:
         loop_var: vm_item
+      register: launched_vms_results
 
     # 2️⃣ Wait for all async jobs to finish
     - name: Wait for all VM launch jobs to complete
       ansible.builtin.async_status:
-        jid: "{{ item.job_id }}"
-      delegate_to: "{{ item.host }}"
+        jid: "{{ item.ansible_job_id }}"
+      delegate_to: "{{ item.item.hostip }}"
       register: vm_results
       until: vm_results.finished
       retries: 100
       delay: 30
-      loop: "{{ async_jobs }}"
+      loop: "{{ launched_vms_results.results }}"
       loop_control:
-        label: "{{ item.name }}"
+        label: "{{ item.item.name }}"
       ignore_errors: true
 
     # 3️⃣ Process each job result and extract VM IP
@@ -40,11 +40,11 @@
             [{
               'name': item.item.name,
               'ip_address': (
-                item.item.networkInterface 
-                | selectattr('gw','defined') 
-                | map(attribute='ipaddress') 
-                | map('split','/') 
-                | map('first') 
+                item.item.networkInterface
+                | selectattr('gw','defined')
+                | map(attribute='ipaddress')
+                | map('split','/')
+                | map('first')
                 | first
               )
             }]
@@ -58,7 +58,7 @@
     - name: Final report
       ansible.builtin.debug:
         msg:
-          - "✅ Successful VMs: {{ successful_vms }}"
+          - "✅ Successful VMs: {{ successful_vms | map(attribute='name') | list }}"
           - "❌ Failed VMs: {{ failed_vms }}"
 
     # 5️⃣ Export workflow stats
@@ -67,7 +67,7 @@
         data:
           launched_vms: "{{ successful_vms }}"
 
-    # 6️⃣ Save successful VMs locally (for CLI or async post-configure)
+    # 6️⃣ Save successfully launched VMs locally
     - name: Save successful VMs locally
       copy:
         content: "{{ successful_vms | to_json }}"
