@@ -9,14 +9,5 @@
         vm_info: "{{ vm_item }}"
       register: create_vm_role_result
 
-    - name: Store successful launch job ID and VM data
-      ansible.builtin.set_fact:
-        successful_vms: >-
-          {{ successful_vms | default([]) + [{
-              'name': vm_item.name,
-              'ip_address': vm_item.networkInterface[0].ipaddress.split('/')[0],
-              'job_id': create_vm_role_result.ansible_facts.create_vm_job_id,
-              'hostip': vm_item.hostip
-          }] }}
   delegate_to: "{{ vm_item.hostip }}"
 
