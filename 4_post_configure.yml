@@ -1,48 +1,40 @@
 ---
-# Play 1: Load successful VMs and create dynamic inventory
-- hosts: all
+- hosts: localhost
   gather_facts: no
   vars:
-    failed_vms: []
-    bms: []              # List of BM IPs
-    bms_vms: {}          # Mapping of BM to its VMs
+    successful_vms_file: "/tmp/successful_vms.json"
     inventory_file: "/tmp/dynamic_inventory.ini"
   tasks:
 
-    - name: Load successful VMs from JSON file
+    - name: Load successful VMs JSON
       slurp:
-        src: "/tmp/successful_vms.json"
-      register: successful_vms_file
+        src: "{{ successful_vms_file }}"
+      register: vms_json
 
     - name: Set successful_vms fact
       set_fact:
-        successful_vms: "{{ successful_vms_file.content | b64decode | from_json }}"
+        successful_vms: "{{ vms_json.content | b64decode | from_json }}"
 
-    - name: Ensure we have successful VMs
-      assert:
-        that:
-          - successful_vms | length > 0
-        fail_msg: "No successful VMs found. Nothing to post-configure."
-        success_msg: "Found {{ successful_vms | length }} VMs to post-configure."
-
-    - name: Prepare BM list and VM mapping
+    - name: Prepare BM list and mapping of VMs
       set_fact:
-        bms: "{{ bms | union([item.hostip]) }}"
-        bms_vms: "{{ bms_vms | combine({ item.hostip: (bms_vms[item.hostip] | default([])) + [ {'name': item.name, 'ip_address': item.ip_address} ] }) }}"
+        bms: "{{ bms | default([]) | union([item.bm | default('unknown_bm')]) }}"
+        bms_vms: >-
+          {{
+            bms_vms | default({}) | combine({
+              (item.bm | default('unknown_bm')):
+              (bms_vms[item.bm | default('unknown_bm')] | default([])) + [item.ip_address]
+            })
+          }}
       loop: "{{ successful_vms }}"
-      loop_control:
-        label: "{{ item.name }}"
 
     - name: Initialize inventory content
       set_fact:
         inventory_content: "[BM]\n{{ bms | join('\n') }}\n\n"
 
-    - name: Add VM groups for each BM
+    - name: Add VM groups per BM
       set_fact:
-        inventory_content: "{{ inventory_content + '[VM_' + item.key + ']\n' + item.value | map(attribute='ip_address') | join('\n') + '\n\n' }}"
+        inventory_content: "{{ inventory_content + '[VM_' + item.key + ']\n' + item.value | join('\n') + '\n\n' }}"
       loop: "{{ bms_vms | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
 
     - name: Save dynamic inventory file
       copy:
@@ -50,16 +42,7 @@
         dest: "{{ inventory_file }}"
       delegate_to: localhost
 
-    - name: Push dynamic inventory to AAP UI
-      shell: >
-        awx inventory update
-        --name "Dynamic_VM_Inventory"
-        --organization "Default"
-        --inventory-source "{{ inventory_file }}"
-      delegate_to: localhost
-      register: aap_inventory_update
-      failed_when: aap_inventory_update.rc != 0
-
-    - name: Debug AAP update result
+    - name: Show generated inventory
       debug:
-        var: aap_inventory_update.stdout
+        msg: "{{ inventory_content }}"
+
