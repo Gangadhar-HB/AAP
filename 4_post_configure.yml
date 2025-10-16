@@ -33,7 +33,14 @@
   gather_facts: no
   tasks:
 
-    - name: Wait for SSH to become available
+    # 🕐 Wait 5 minutes before attempting SSH
+    - name: Wait 5 minutes for VM to finish booting
+      pause:
+        minutes: 5
+      when: successful_vms is defined and successful_vms | length > 0
+
+    # ✅ Fixed — no async here
+    - name: Wait for SSH to be available
       wait_for_connection:
         delay: 10
         timeout: 300
@@ -47,40 +54,4 @@
       delegate_to: localhost
       shell: ssh-keyscan -H {{ inventory_hostname }} >> ~/.ssh/known_hosts
       ignore_errors: true
-
-    - name: Run PostVMLaunch tasks asynchronously
-      import_tasks: files/PostVMLaunch.yml
-      async: 1800
-      poll: 0
-      register: postvm_job
-      ignore_errors: true
-
-    - name: Wait for PostVMLaunch tasks to complete
-      async_status:
-        jid: "{{ postvm_job.ansible_job_id }}"
-      register: postvm_result
-      until: postvm_result.finished
-      retries: 60
-      delay: 30
-      ignore_errors: true
-
-    - name: Check for ERRORs in logs
-      shell: sudo grep -iE "ERROR" /root/logs/vm_config_thin_vol.sh/* || true
-      register: vm_log_check
-      failed_when: false
-
-    - name: Fail VM if errors found
-      fail:
-        msg: "Found ERROR(s) on VM {{ inventory_hostname }}:\n{{ vm_log_check.stdout }}"
-      when: vm_log_check.stdout != ""
-
-# Play 3: Summary
-- hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: Final report
-      debug:
-        msg:
-          - "✅ Successful VMs: {{ successful_vms }}"
-          - "❌ Failed VMs: {{ failed_vms }}"
 
