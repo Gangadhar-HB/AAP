@@ -34,7 +34,12 @@
     # 3️⃣ Process each job result
     - name: Process VM results
       ansible.builtin.set_fact:
-        successful_vms: "{{ successful_vms + [item.item.name] if item.rc == 0 else successful_vms }}"
+        successful_vms: >-
+          {{
+            successful_vms + 
+            [{'name': item.item.name, 'ip_address': item.item.ip_address}]
+            if item.rc == 0 else successful_vms
+          }}
         failed_vms: "{{ failed_vms + [item.item.name] if item.rc != 0 else failed_vms }}"
       loop: "{{ vm_results.results | default([]) }}"
       when: item.ansible_job_id is defined
@@ -52,10 +57,7 @@
         data:
           launched_vms: "{{ successful_vms }}"
 
-    - name: Append successfully launched VMs to local list
-      set_fact:
-        successful_vms: "{{ successful_vms | default([]) + [{'name': vm_name, 'ip_address': vm_ip}] }}"
-
+    # 6️⃣ Save successful VMs locally (for CLI or async post-configure)
     - name: Save successful VMs
       copy:
         content: "{{ successful_vms | to_json }}"
