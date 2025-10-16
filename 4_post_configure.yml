@@ -1,6 +1,6 @@
 ---
 # Play 1: Load successful VMs and create dynamic inventory
-- hosts: localhost
+- hosts: all
   gather_facts: no
   vars:
     failed_vms: []

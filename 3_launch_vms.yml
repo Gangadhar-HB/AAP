@@ -57,4 +57,3 @@
       copy:
         content: "{{ successful_vms | to_json }}"
         dest: "/tmp/successful_vms.json"
-      delegate_to: localhost
