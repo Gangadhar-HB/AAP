@@ -6,6 +6,7 @@
         name: create_vm
       vars:
         vm_name: "{{ vm_item.name }}"
+        vm_info: "{{ vm_item }}"
       register: create_vm_role_result
 
     - name: Store successful launch job ID and VM data

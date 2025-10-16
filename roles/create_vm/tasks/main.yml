@@ -1,96 +1,80 @@
 ---
-# tasks file for create_cfg role
-# This block of tasks generates all necessary configuration files
-# and a cloud-init ISO for a single VM.
+# ======================================================================
+# Role: create_vm
+# Purpose: Launch a VM, handle failure cleanup, and record success/failure.
+# ======================================================================
 
-- name: Ensure required directories exist
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
-  become: true
-  loop:
-    - "/usr/local/etc/vm_configs/{{ vm_name }}"
-    - "/cloudinitiso/{{ vm_name }}"
+- block:
 
-- name: Set partition size facts for use in templates
-  ansible.builtin.set_fact:
-    couchdata: "{{ item.vm_partition.couchdata_size | default(omit) }}"
-    couchindex: "{{ item.vm_partition.couchindex_size | default(omit) }}"
-    DGdata: "{{ item.vm_partition.DGdata_size | default(omit) }}"
-    DGlogs: "{{ item.vm_partition.DGlogs_size | default(omit) }}"
-    Database: "{{ item.vm_partition.Database_size | default(omit) }}"
-    GridGainData: "{{ item.vm_partition.GridGainData_size | default(omit) }}"
-    GridGainDrFs: "{{ item.vm_partition.GridGainDrFs_size | default(omit) }}"
-    GridGainWal: "{{ item.vm_partition.GridGainWal_size | default(omit) }}"
-    PostgresData: "{{ item.vm_partition.PostgresData_size | default(omit) }}"
-    PostgresWal: "{{ item.vm_partition.PostgresWal_size | default(omit) }}"
-    Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
+    # ----------------------------------------------------------
+    # 1️⃣ Launch the VM
+    # ----------------------------------------------------------
+    - name: "Launching VM {{ vm_name }}"
+      ansible.builtin.shell: >
+        sudo bash -x /usr/local/bin/vm_build_and_install.sh
+        -d 4 -v RESTORE {{ vm_name }}
+      register: vm_creation_result
+      ignore_errors: true
 
-# --- Network Configuration ---
-- name: Create network configuration file based on setup type
-  ansible.builtin.template:
-    src: "{{ 'roles/create_cfg/templates/wavelite_network_config.ini.j2' if effective_setup == '1' else 'roles/create_cfg/templates/network_config.ini.j2' }}"
-    dest: "/tmp/network_{{ vm_name }}.ini"
-    owner: root
-    group: root
-    mode: '0644'
-  become: true
+    # ----------------------------------------------------------
+    # 2️⃣ Handle Failure
+    # ----------------------------------------------------------
+    - block:
+        - name: "Append VM to failed list"
+          ansible.builtin.set_fact:
+            failed_vms: "{{ failed_vms | default([]) + [vm_name] }}"
 
-- name: Read network configuration file content using slurp
-  ansible.builtin.slurp:
-    src: "/tmp/network_{{ vm_name }}.ini"
-  become: true
-  register: network_ini_content
+        - name: "Delete LVM partitions for failed VM (if created)"
+          ansible.builtin.shell: >
+            sudo lvremove /dev/{{ vg_name }}/{{ vm_name }}_part
+            /dev/{{ vg_name }}/{{ vm_name }}_vol -y
+          ignore_errors: true
 
-- name: Set network config fact from slurped content
-  ansible.builtin.set_fact:
-    user_data_action_1: "{{ network_ini_content.content | b64decode }}"
+        - name: "Debug VM failure reason"
+          ansible.builtin.debug:
+            msg:
+              - "VM {{ vm_name }} failed to launch."
+              - "Error Output: {{ vm_creation_result.stderr | default('N/A') }}"
+              - "Return Code: {{ vm_creation_result.rc | default('unknown') }}"
+      when: vm_creation_result is not succeeded
+            or (vm_creation_result.stdout | regex_search('virt-install command returned error'))
 
-# --- Thin Pool Configuration ---
-- name: Generate thin pool configuration files in multiple locations
-  ansible.builtin.template:
-    src: "{{ item.vm_type }}_thin_pool_volume.cfg.j2"
-    dest: "{{ dest_path }}"
-    owner: root
-    group: root
-    mode: '0644'
-  become: true
-  loop:
-    - "/usr/local/etc/vm_configs/{{ vm_name }}/{{ item.vm_type }}_thin_pool_volume.cfg"
-    - "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg"
-  loop_control:
-    loop_var: dest_path
+    # ----------------------------------------------------------
+    # 3️⃣ Handle Success
+    # ----------------------------------------------------------
+    - block:
+        - name: "Append VM to successful list"
+          ansible.builtin.set_fact:
+            successful_vms: "{{ successful_vms | default([]) + [vm_name] }}"
 
-- name: Read thin pool configuration file content using slurp
-  ansible.builtin.slurp:
-    src: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg"
-  become: true
-  register: thin_pool_cfg_content
+        - name: "Check VM state via virsh"
+          ansible.builtin.shell: >
+            sudo virsh -c qemu:///system dominfo {{ vm_name }} |
+            grep "State" | awk '{ print $2 }'
+          register: vm_check
+          until: vm_check.stdout.find("running") != -1
+          retries: 20
+          delay: 30
+          ignore_errors: true
 
-- name: Set thin pool config fact from slurped content
-  ansible.builtin.set_fact:
-    user_data_action: "{{ thin_pool_cfg_content.content | b64decode }}"
+        - name: "Store VM state in dictionary"
+          ansible.builtin.set_fact:
+            vm_state: "{{ vm_state | default({}) | combine({ vm_name: vm_check.stdout | default('unknown') }) }}"
 
-# --- Cloud-Init ISO Generation ---
-- name: Generate cloud-init user-data and meta-data files
-  ansible.builtin.template:
-    src: "{{ file }}.j2"
-    dest: "/cloudinitiso/{{ vm_name }}/{{ file }}"
-    owner: root
-    group: root
-    mode: '0644'
-  become: true
-  loop:
-    - user-data
-    - meta-data
-  loop_control:
-    loop_var: file
+        - name: "Debug success summary"
+          ansible.builtin.debug:
+            msg:
+              - "✅ VM '{{ vm_name }}' launched successfully."
+              - "VM State : {{ vm_check.stdout | default('unknown') }}"
+              - "Successful VMs : {{ successful_vms }}"
+              - "VM States : {{ vm_state }}"
+      when: vm_creation_result is succeeded
+            and (vm_creation_result.stdout | regex_search('Domain creation completed'))
 
-- name: Create cloud-init ISO image using the command module
-  ansible.builtin.command:
-    cmd: "genisoimage -output {{ vm_name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
-    chdir: "/cloudinitiso/{{ vm_name }}"
-  become: true
+# ----------------------------------------------------------
+# 4️⃣ Final Report
+# ----------------------------------------------------------
+- name: "List of failed VMs"
+  ansible.builtin.debug:
+    msg: "❌ Failed VMs: {{ failed_vms | default([]) }}"
+
