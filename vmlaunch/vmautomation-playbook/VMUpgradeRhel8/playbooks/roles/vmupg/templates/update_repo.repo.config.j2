@@ -1,0 +1,20 @@
+#
+# Update repository
+#
+repo_label = update_repo
+repo_url = https://{{ certificate_domain }}/repos/{{ repository_name }}
+repo_ip = {{ repo_ip }}
+{% if 'update-repo.kodiak.repo' not in certificate_domain %}
+certificate_file = {{ certificate_domain }}.crt
+{% endif %}
+# Yum command-line options for 'yum update' command
+yum_option = --security
+yum_option = -x python
+yum_option = -x python-libs
+yum_option = -x python-devel
+yum_option = -x ansible
+yum_option = -x java-11-openjdk
+yum_option = -x java-11-openjdk-devel
+yum_option = -x java-11-openjdk-headless
+yum_option = -x java-1.8.0-openjdk
+yum_option = -x java-1.8.0-openjdk-devel

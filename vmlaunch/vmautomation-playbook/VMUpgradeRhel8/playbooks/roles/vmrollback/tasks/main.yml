@@ -1,0 +1,411 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+- name: Remove target system from local known_hosts file
+  become: no
+  lineinfile:
+    dest: '{{ home_dir }}/.ssh/known_hosts'
+    state: absent
+    regexp: '^{{ inventory_hostname }}'
+  delegate_to: localhost
+
+- name: Read VM Mem allocated
+  shell: free -m | awk 'FNR==2 {print $2}'
+  register: total_mem
+  when: 'group_vm in group_names'
+
+- name: remove older qcow2 files
+  shell: rm -f /home/autoinstall/*.qcow2
+  become: yes
+  ignore_errors: true
+  when: 'group in group_names'
+
+
+- name: copy qcow2 to Baremetal host
+  copy: src="{{ qcow2 }}" dest="/home/autoinstall" mode="0770"
+  when: 'group in group_names'
+  any_errors_fatal: true
+
+- name: Verify QCOW2 image checksum
+  ansible.builtin.command:
+    cmd: qemu-img check /home/autoinstall/{{ qcow2_name }}
+  register: qcow_check
+  ignore_errors: yes
+
+- name: Fail if QCOW2 image check failed
+  ansible.builtin.fail:
+    msg: "QCOW2 image check failed! rc={{ qcow_check.rc }} stderr={{ qcow_check.stderr }}"
+  when: qcow_check.rc != 0
+
+- name: Check for VM  prerequisite patch
+  command: /bin/sed -nr '/{{ prev_vm_patch }}-/,$p' /etc/kodiak-release
+  register: kodiak_vm_prerequisite_patch
+  become: true
+  become_user: root
+  when: 'group_vm in group_names'
+  ignore_errors: true
+
+
+- name: usr_new fstab changes
+  block:
+
+    - name: verify vg01-usr_new
+      shell: grep 'vg01-usr_new' /etc/fstab
+      register: verify_share
+      ignore_errors: true
+      become: yes
+      become_user: root
+
+    - name: Comment out  in fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '.*/vg01-usr_new.*'
+        state: absent
+        backup: true
+      when: verify_share.rc ==  0
+      become: yes
+      become_user: root
+
+
+    - name: verify usr
+      shell: grep 'LABEL=USR' /etc/fstab
+      register: verify_usr
+      ignore_errors: true
+      become: yes
+      become_user: root
+
+
+    - name: Comment out  in fstab
+      replace:
+         path: /etc/fstab
+         regexp: '#LABEL=USR'
+         replace: 'LABEL=USR'
+      when: verify_usr.rc ==  0
+      become: yes
+      become_user: root
+      
+  when: 
+     - 'group_vm in group_names'
+     - prev_vm_patch is not search('^13\.')
+
+#- name: removing the LV
+#  shell: lvremove -f /dev/mapper/vg01-usr_new
+#  when: verify_share.rc ==  0
+#  ignore_errors: true
+#  when: group_vm in group_names
+#  become: yes
+#  become_user: root
+#  when: 'group_vm in group_names'
+
+- debug: msg="VM rollback already done"
+  when: ( group_vm in group_names ) and ( kodiak_vm_prerequisite_patch.stdout != "" )
+  ignore_errors: true
+
+- local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
+  when: ( group_vm in group_names )  and ( kodiak_vm_prerequisite_patch.stdout != "")
+  ignore_errors: true
+
+- local_action: shell /bin/cat /home/autoinstall/{{ check_status_file }}
+  register: check_status
+
+- meta: end_play
+  when: check_status.stdout == 'fail'
+
+
+- name: Running backup script before shutting down
+  include_role:
+    name: container_recover_backup
+  vars:
+    parent_role_name: vmrollback
+  when: group_vm in group_names
+
+
+#- name: Running container_rollback
+#  include_role:
+#    name: container_rollback
+#  when: group_vm in group_names
+
+
+- name: creating running_container.dat file with running containers
+  command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat
+  become: yes
+  become_user: root
+  when: group_vm in group_names
+
+- name: Running container_rollback
+  include_role:
+    name: container_rollback
+  when: group_vm in group_names
+
+- name: Writing backup state on VM as OK
+  command: /bin/echo "OK" > /usr/local/etc/vm_config_state.txt
+  when: group_vm in group_names
+
+
+- name: Shutdown VM
+  command: virsh -c qemu:///system shutdown {{ vm_name }}
+  register: vm_shut
+  when: 'group in group_names'
+  any_errors_fatal: true
+
+- name: check VM state
+  shell: virsh -c qemu:///system dominfo {{ vm_name }} | grep "State"
+  register: vm_check
+  until: vm_check.stdout.find("shut off") != -1
+  retries: 20
+  delay: 30
+  when: 'group in group_names'
+  ignore_errors: true
+
+- debug: var=vm_check
+  when: 'group in group_names'
+  ignore_errors: true
+
+- name: Force stop VM if not stopped
+  command: virsh -c qemu:///system destroy {{ vm_name }}
+  register: destroy_vm
+  when: group in group_names and vm_check.stdout.find("shut off") == -1
+  ignore_errors: true
+
+- name: check available ram
+  shell: free -m | awk 'FNR==2 {print $NF}'
+  register: host_free_mem
+  when: 'group in group_names'
+
+- name: Starting VM since memory is not available
+  command: virsh -c qemu:///system start {{ vm_name }}
+  when: host_free_mem | int  < total_mem | int
+
+- fail: msg="Memory allocated for VM is not available on baremetal Host"
+  when: host_free_mem | int  < total_mem | int
+  any_errors_fatal: true
+
+- name: Finding os partition
+  shell: "virsh -c qemu:///system domblklist {{ vm_name }} | awk 'NR>2 {print $2}' | head -n 1"
+  register: os_partition
+  when: group in group_names
+  any_errors_fatal: true
+
+- name: copying image to /var/lib/libvirt/images/
+  command: cp -pvf /home/autoinstall/{{ qcow2_name }} {{ os_partition.stdout }}
+  register: copy_qcow2_libvirt
+  when: group in group_names and os_partition.stdout.find(".qcow2") != -1
+  any_errors_fatal: true
+
+- name: Launching VM with block storage
+  include_role:
+    name: vmrelaunch_blockstorage
+  when: group in group_names and os_partition.stdout.find(".qcow2") == -1
+
+- name: start VM
+  command:  virsh -c qemu:///system start {{ vm_name }}
+  register: start_vm
+  when: 'group in group_names'
+
+- debug: var=start_vm
+  when: 'group in group_names'
+
+- name: Remove target system from local known_hosts file
+  become: no
+  lineinfile:
+    dest: '{{ home_dir }}/.ssh/known_hosts'
+    state: absent
+    regexp: '^{{ inventory_hostname }}'
+  delegate_to: localhost
+
+- name: Check for VM connection
+  wait_for:
+    port: 22
+    host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+    connect_timeout: 5
+    delay: 10
+    timeout: 1800
+  connection: local
+  any_errors_fatal: true
+  when: 'group_vm in group_names'
+
+#- name: Enabling password less
+#  authorized_key:
+#    user: autoinstall
+#    state: present
+#    key: "{{ lookup('file', '/root/.ssh/id_dsa.pub') }}"
+#  register: pwd_status
+- name: copying pub key to remote host
+  copy:
+    src: "/root/.ssh/id_dsa.pub"
+    dest: "/tmp/id_dsa.pub"
+  register: copying_dsa_pub
+
+- name: Ensure root .ssh directory exists
+  file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Enabling password less
+  shell: |
+   cat /tmp/id_dsa.pub >> ~/.ssh/authorized_keys
+  register: pwd_status
+
+- name: Replacing back authorized_keys from /DGdata
+  copy:
+    src: /DGdata/authorized_keys
+    dest: /home/autoinstall/.ssh/
+    owner: autoinstall
+    group: kodiakgroup
+    mode: '0600'
+    remote_src: yes
+  when: group_vm in group_names
+  ignore_errors: true
+  become: yes
+  become_user: root
+
+- name: Check for rollback patch
+  command: /bin/sed -nr '/{{ prev_vm_patch }}-/,$p' /etc/kodiak-release
+  register: kodiak_vm_rollback_patch
+  become: true
+  become_user: root
+  when: 'group_vm in group_names'
+  failed_when: kodiak_vm_rollback_patch.stdout == ""
+  any_errors_fatal: true
+
+- name: update sshd
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    line: "{{item}}"
+  with_items:
+    - 'Match user autoinstall'
+    - 'PasswordAuthentication yes'
+  become: true
+  become_user: root
+  when: group_vm in group_names
+
+- name: restart sshd
+  service:
+    name: sshd
+    state: restarted
+    enabled: yes
+  become: true
+  become_user: root
+  when: group_vm in group_names
+
+#- name: Running container_rollback
+#  include_role:
+#    name: container_rollback
+#  when: group_vm in group_names
+
+
+#- name: finding from /DGdata/rhel79servicefiles to /etc/systemd/system
+#  become: yes
+#  become_user: root
+#  find:
+#    paths: "/DGdata/rhel79servicefiles"
+#    recurse: yes
+#    patterns: "*.service*"
+#  register: rhel79servicefiles
+
+#- name: copying from /DGdata/rhel79servicefiles to /etc/systemd/system
+#  become: yes
+#  become_user: root
+#  copy:
+#    src: "{{ item.path }}"
+#    dest: /etc/systemd/system
+#    remote_src: yes
+#  with_items: "{{ rhel79servicefiles.files }}"
+
+
+- command: cat /usr/local/etc/running_container.dat
+  register: running_list
+  ignore_errors: true
+  become: true
+  become_user: root
+  when: group_vm in group_names
+
+- name: check for docker service to be up
+  command: systemctl is-active docker
+  register: docker_status
+  until: docker_status.rc == 0
+  retries: 12
+  delay: 10
+  when: 
+     - group_vm in group_names
+     - prev_vm_patch is not search('^13\.')
+  ignore_errors: true
+  become: yes
+  become_user: root
+
+- name: check for docker service to be up
+  command: systemctl is-active podman.socket
+  register: docker_status
+  until: docker_status.rc == 0
+  retries: 12
+  delay: 10
+  when:
+     - group_vm in group_names
+     - prev_vm_patch is search('^13\.')
+  ignore_errors: true
+  become: yes
+  become_user: root
+
+
+- fail: msg="container service is not started"
+  when: group_vm in group_names and (docker_status.rc | default(1)) != 0
+  any_errors_fatal: true
+
+- name: check for docker containers status
+  shell: docker ps -f status=running --format {{ '{{' }}.Names{{ '}}' }}
+  register: dockercontainer_running_status
+  when:
+    - group_vm in group_names
+  any_errors_fatal: true
+  become: yes
+  become_user: root
+
+- name: docker running containers list
+  debug:
+    msg: "{{ item }}"
+  with_items:
+    - "{{ dockercontainer_running_status.stdout.split('\n') }}"
+  when: group_vm in group_names
+
+
+- name: check for docker containers status if running_container.dat is exists
+  command: docker ps --format {{ '{{' }}.Names{{ '}}' }}
+  register: container_status
+  until: container_status.stdout_lines == running_list.stdout_lines
+  retries: 10
+  delay: 30
+  when: group_vm in group_names and running_list.rc == 0
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+
+- name: copy back hosts file into /etc
+  copy: src="/DGdata/VMBACKUP/hosts" dest="/etc/hosts" mode="0644" remote_src=yes
+  when: group_vm in group_names
+  become: true
+  become_method: sudo
+
+- name: removing the LV /dev/mapper/vg01-usr_new
+  shell: lvremove -f /dev/mapper/vg01-usr_new
+  ignore_errors: true
+  when: 
+    - group_vm in group_names
+    - prev_vm_patch is not search('^13\.')
+  become: yes
+  become_user: root
+
+- name: Waiting for containers post rollback
+  ansible.builtin.pause:
+    prompt: "Waiting for containers to be up "
+    minutes: 5
+  when: group_vm in group_names
+  become: yes
+  become_user: root
+
+- debug: msg="VM Rollback success"

@@ -1,0 +1,16 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+- name: VM re-launching on Bare Metal host with existing thin volume
+  hosts: bare_metal_hosts,vm_hosts
+  gather_facts: no
+  any_errors_fatal: true
+  remote_user: "{{ upg_user }}"
+  become: true
+
+  roles:
+    - role: vmrollback
+

@@ -1,0 +1,39 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+- name: Loading images
+  command: docker load -q -i "{{ item.path }}"
+  register: docker_loading
+  with_items: "{{ images_list.files }}"
+  ignore_errors: true
+
+- name: find docker registry name in kodiakEMS.conf
+  local_action: shell source /etc/kodiakEMS.conf;/bin/echo $DOCKER_REGISTRY_DOMAIN
+  register: registry_domain
+  ignore_errors: true
+
+- set_fact:
+    loaded_images: "{{ loaded_images }} + [ '{{ item.stdout | replace('Loaded image: ','') }}' ]"
+  no_log: True
+  with_items: "{{ docker_loading.results }}"
+  ignore_errors: true
+
+- debug: var=loaded_images
+  ignore_errors: true
+
+- name: Tag images
+  command: docker tag {{ item }} {{ registry_domain.stdout }}/{{ item }}
+  with_items: "{{ loaded_images }}"
+  ignore_errors: true
+
+- name: remove old tags
+  command: docker rmi {{ item }}
+  with_items: "{{ loaded_images }}"
+  ignore_errors: true
+
+- debug: msg="Images loading and tagging done"
+  ignore_errors: true
+

@@ -1,0 +1,136 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+- name: Remove target system from local known_hosts file
+  copy:
+    content: ""
+    dest: /root/.ssh/known_hosts
+  delegate_to: localhost
+
+- name: Verify libvirt group check for autoinstall
+  shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
+  register: libvirt_check
+  ignore_errors: true
+  when: group in group_names
+
+- name: Adding autoinstall user into libvirt group
+  command: usermod -a -G libvirt {{ upg_user }}
+  register: usermod_autoinstall
+  when: group in group_names and libvirt_check.rc != 0
+  become: yes
+
+- name: Check if polkit service exists
+  ansible.builtin.systemd:
+    name: polkit
+  register: polkit_status
+  ignore_errors: yes
+  become: yes
+  when: group in group_names and libvirt_check.rc != 0
+
+- name: Restart polkit service if it exists and is running
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - polkit
+    - libvirtd
+  ignore_errors: yes
+  become: yes
+  when: polkit_status is defined and polkit_status.status is defined
+
+
+- name: Re-verify libvirt group check for autoinstall
+  shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
+  register: libvirt_recheck
+  any_errors_fatal: true
+  when: group in group_names and libvirt_check.rc != 0
+
+- debug:
+    msg:
+    - "Checking for VM : {{ vm_name }} on 2U host"
+
+- name: check for VM on the 2U Host
+  command: virsh -c qemu:///system dominfo {{ vm_name }}
+  register: vm_check
+  when: group in group_names
+  failed_when: vm_check.rc == 1
+  any_errors_fatal: true
+
+- name: Check for latest patch
+  command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
+  register: kodiak_vm_latest_patch
+  when: group_vm in group_names
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+
+- debug: msg="kodiak_vm_latest_patch {{ kodiak_vm_latest_patch }} "
+
+- debug: msg="VM already Upgraded {{ check_status_file }} "
+  when: ( group_vm in group_names )  and ( kodiak_vm_latest_patch.stdout != "" )
+
+- local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
+  when: (  group_vm in group_names )  and ( kodiak_vm_latest_patch.stdout != "" )
+
+- local_action: shell /bin/cat /home/autoinstall/{{ check_status_file }}
+  register: check_status
+
+
+- meta: end_play
+  when: check_status.stdout == 'fail'
+
+- name: Check for VM  prerequisite patch
+  command: /bin/sed -nr '/{{ prev_vm_patch }}-/,$p' /etc/kodiak-release
+  register: kodiak_vm_prerequisite_patch
+  when: group_vm in group_names
+  failed_when: kodiak_vm_prerequisite_patch.stdout == ""
+  any_errors_fatal: true
+  become: yes
+  become_user: root
+
+- name: Check if IPv4 ICMP timestamp rules are present
+  become: true
+  become_user: root
+  shell: >
+    (grep -E -- "-A INPUT.*-p icmp.*--icmp-type (timestamp-request|13).* -j REJECT" /etc/sysconfig/iptables &&
+     grep -E -- "-A INPUT.*-p icmp.*--icmp-type (timestamp-reply|14).* -j REJECT" /etc/sysconfig/iptables) ||
+    { sed -i '/^COMMIT/q' /etc/sysconfig/iptables; false; }
+  register: icmp_rule_check
+  ignore_errors: yes
+
+- name: Ensure IPv4 ICMP rules are present if missing
+  become: true
+  become_user: root
+  blockinfile:
+    path: /etc/sysconfig/iptables
+    block: |
+      -A INPUT -p icmp --icmp-type timestamp-request -j REJECT --reject-with icmp-host-prohibited
+      -A INPUT -p icmp --icmp-type timestamp-reply -j REJECT --reject-with icmp-host-prohibited
+    insertbefore: '^COMMIT'
+    marker: ""
+  when: icmp_rule_check.rc != 0
+
+- name: Check if IPv6 ICMP timestamp rules are present
+  become: true
+  become_user: root
+  shell: >
+    (grep -E "-A INPUT.*-p icmpv6.*--icmpv6-type (13).* -j REJECT" /etc/sysconfig/ip6tables &&
+     grep -E "-A OUTPUT.*-p icmpv6.*--icmpv6-type (14).* -j REJECT" /etc/sysconfig/ip6tables) ||
+    { sed -i '/^COMMIT/q' /etc/sysconfig/ip6tables; false; }
+  register: icmpv6_rule_check
+  ignore_errors: yes
+
+- name: Ensure IPv6 ICMP rules are present if missing
+  become: true
+  become_user: root
+  blockinfile:
+    path: /etc/sysconfig/ip6tables
+    block: |
+      -A INPUT -p icmpv6 -m icmp6 --icmpv6-type 13 -j REJECT --reject-with icmp6-port-unreachable
+      -A OUTPUT -p icmpv6 -m icmp6 --icmpv6-type 14 -j REJECT --reject-with icmp6-port-unreachable
+    insertbefore: '^COMMIT'
+    marker: ""
+  when: icmpv6_rule_check.rc != 0

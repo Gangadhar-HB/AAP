@@ -1,0 +1,162 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+
+#- name: check directory exist or not
+#  become: yes
+#  become_user: root
+#  any_errors_fatal: true
+#  when: inventory_hostname in groups[group_vm]
+#  file:
+#    path: "{{ item }}"
+#    state: absent
+#  loop:
+#    - /DGdata/rhel8servicefiles
+#    - /DGdata/rhel8containersini
+#    - /DGdata/rhel8containerdat
+
+- name: creating directory
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: autoinstall
+    group: kodiakgroup
+    mode: 0777
+    recurse: yes
+  loop:
+    - /DGdata/rhel8servicefiles
+    - /DGdata/rhel8containersini
+    - /DGdata/rhel8containerdat
+
+- name: finding from /usr/local/etc to /DGdata/rhel8containerdat
+  become: yes
+  become_user: root
+  find:
+    paths: "/usr/local/etc"
+    recurse: yes
+    patterns: "*.dat"
+  register: copy_rhel8containerdat_status
+
+- name: copying from /usr/local/etc to /DGdata/rhel8containerdat
+  become: yes
+  become_user: root
+  copy:
+    src: "{{ item.path }}"
+    dest: /DGdata/rhel8containerdat
+    remote_src: yes
+  with_items: "{{ copy_rhel8containerdat_status.files }}"
+
+
+
+- name: finding from /usr/local/etc to /DGdata/rhel8containersini
+  become: yes
+  become_user: root
+  find:
+    paths: "/usr/local/etc/containers"
+    recurse: yes
+    patterns: "*.*"
+  register: copy_rhel8containersini_status
+
+- name: copying from /usr/local/etc to /DGdata/rhel8containersini
+  become: yes
+  become_user: root
+  copy:
+    src: "{{ item.path }}"
+    dest: /DGdata/rhel8containersini
+    remote_src: yes
+  with_items: "{{ copy_rhel8containersini_status.files }}"
+
+
+- name: finding from  /usr/local/etc to /DGdata/rhel8servicefiles
+  become: yes
+  become_user: root
+  find:
+    paths: "/usr/local/etc/systemd/system"
+    recurse: yes
+    patterns: "*.service*"
+  register: copy_rhel8servicefiles_status
+
+- name: copying from /usr/local/etc to /DGdata/rhel8servicefiles
+  become: yes
+  become_user: root
+  copy:
+    src: "{{ item.path }}"
+    dest: /DGdata/rhel8servicefiles
+    remote_src: yes
+  with_items: "{{ copy_rhel8servicefiles_status.files }}"
+
+- name: removing /usr/local/etc/systemd/system/service files
+  become: yes
+  become_user: root
+  shell: rm -rf /usr/local/etc/systemd/system/*.service
+  register: usr_local_servicefiles
+  when: prev_vm_patch is not search('^13\.')
+
+- debug: msg="{{usr_local_servicefiles.stdout}}"
+  when: prev_vm_patch is not search('^13\.')
+  
+
+- debug:
+   msg: Removing "{{ copy_rhel8servicefiles_status.files }}" files
+  when: prev_vm_patch is not search('^13\.')
+
+
+
+
+
+- name: copying back from /DGdata/rhel79containerdat to /usr/local/etc
+  become: yes
+  become_user: root
+  shell: yes | cp -Rf /DGdata/rhel79containerdat/running_container.dat /usr/local/etc
+  ignore_errors: true
+  when: prev_vm_patch is not search('^13\.')
+  
+
+- name: Finding container systemd service files
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  find:
+    paths: "/DGdata/rhel79servicefiles"
+    recurse: yes
+    patterns: "*.service*"
+  register: systemdsrvc_files
+  failed_when: systemdsrvc_files == ""
+  when: prev_vm_patch is not search('^13\.')
+
+
+- name: listing servicefiles
+  debug:
+    msg: "{{ systemdsrvc_files }}"
+  when: prev_vm_patch is not search('^13\.')
+
+- command: cat /usr/local/etc/running_container.dat
+  register: running_list
+  ignore_errors: true
+  become: yes
+  become_user: root
+  when: prev_vm_patch is not search('^13\.')
+
+- name:  check service files
+  become: yes
+  become_user: root
+  shell: yes | cp -Rf /DGdata/rhel79servicefiles/{{ item }}.service /usr/local/etc/systemd/system/
+  when:
+    - prev_vm_patch is not search('^13\.')
+    - running_list.rc == 0
+  with_items:
+    - "{{ running_list.stdout_lines }}"
+  any_errors_fatal: true
+  register: servicefileslist
+
+
+- name: servicefileslist
+  debug:
+    msg: "{{ servicefileslist }}"
+  when: prev_vm_patch is not search('^13\.')

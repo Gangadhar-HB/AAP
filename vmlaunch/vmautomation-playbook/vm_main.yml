@@ -1,0 +1,102 @@
+---
+- name: VM Provisioning Playbook
+  hosts: all
+  gather_facts: false
+
+  vars:
+    already_present: []
+    failed_vms: []
+    successful_vms: []
+  
+  tasks:
+    - name: Setup type
+      ansible.builtin.set_fact:
+        effective_setup: "{{ setup | default('0', true) }}"
+    
+    - name: Display setup type
+      ansible.builtin.debug:
+        msg: "{{ 'Setup Type is On-Prem' if effective_setup == '0' else 'Setup Type is Wavelite' }}"
+    
+    - name: Check if VM is present
+      ansible.builtin.include_tasks: files/check_vmpresent.yml
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: item
+    
+    - name: VM Creation Block
+      block:
+        - name: Generate configuration files
+          ansible.builtin.include_role:
+            name: create_cfg
+          vars:
+            vm_type: "{{ vm_type }}"
+            vm_name: "{{ vm_to_rerun | default(name) }}"
+          loop: "{{ vms }}"
+          loop_control:
+            loop_var: item
+          when: 
+            - "'F5' not in item.vm_type"
+            - "name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == name"
+
+        - name: Generate INI files
+          ansible.builtin.include_role:
+            name: create_ini
+          vars:
+            vm_type: "{{ vm_type }}"
+            vm_name: "{{ vm_to_rerun | default(name) }}"
+          loop: "{{ vms }}"
+          loop_control:
+            loop_var: item
+          when:
+            - "name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == name"
+    
+        - name: Launch VMs
+          ansible.builtin.include_role:
+            name: create_vm
+          vars:
+            vm_type: "{{ vm_type }}"
+            vm_name: "{{ vm_to_rerun | default(name) }}"
+          loop: "{{ vms }}"
+          loop_control:
+            loop_var: item
+          when:
+            - "name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == name"
+
+        - name: Display already present VMs
+          ansible.builtin.debug:
+            msg: "The following VMs are already present: {{ already_present }}"
+          when: already_present | length > 0
+          run_once: true
+
+    - name: Wait for VM initialization
+      ansible.builtin.wait_for:
+        timeout: 300
+      delegate_to: "{{ ansible_host }}"
+      loop: "{{ successful_vms }}"
+      run_once: true
+      when: successful_vms | length > 0
+
+    - name: Post VM configuration
+      ansible.builtin.include_tasks: files/PostVMLaunch.yml
+      loop: "{{ vms }}"
+      loop_control:
+      loop_var: vm
+      vars:
+      vm_name: "{{ vm.name }}"
+      vm_type: "{{ vm.vm_type }}"
+      ansible_user: "{{ user }}"
+      ansible_password: "{{ password }}"
+      vm_host: "{{ vm.hostip | default(ansible_host) }}"
+      when:
+      - "'F5' not in vm.vm_type"
+      - "vm.name not in (failed_vms | default([]))"
+      - "(vm.hostip | default(ansible_host)) == inventory_hostname"
+
+
+    - name: Fail if VMs failed to launch
+      ansible.builtin.fail:
+        msg: "Failed VMs list: {{ failed_vms }}"
+      when: failed_vms | length > 0

@@ -1,0 +1,118 @@
+- name: Initialize vm_ips dictionary
+  set_fact:
+    vm_ips: {}
+
+- name: fetch IP address from the vlan having gateway
+  set_fact:
+     ip_with_gw: "{{item.ipaddress.split('/')[0]}}"
+  loop: "{{vm.networkInterface}}"
+  when: item.gw is defined and item.gw != ''
+
+- name: display ipaddress
+  debug:
+    msg: "{{ip_with_gw}}"
+
+
+- name: Build vm_ips dictionary from IP results
+  set_fact:
+    vm_ips: "{{ vm_ips | combine({ vm.name: ip_with_gw }) }}"
+
+
+- name: Wait for SSH (port 22) on all VM primary IPs
+  wait_for:
+    host: "{{ item.value }}"
+    port: 22
+    timeout: 300
+    state: started
+  loop: "{{ vm_ips | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} ({{ item.value }})"
+
+- name: Remove old SSH key for VM from known_hosts
+  shell: ssh-keygen -R {{ item.value }}
+  delegate_to: localhost
+  ignore_errors: true
+  loop: "{{ vm_ips | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} ({{ item.value }})"
+
+- name: Add new SSH key for VM to known_hosts
+  shell: ssh-keyscan -H {{ item.value }} >> ~/.ssh/known_hosts
+  delegate_to: localhost
+  ignore_errors: true
+  loop: "{{ vm_ips | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} ({{ item.value }})"
+
+
+- name: Check if script file exists on each VM
+  shell: sudo find /root/logs/vm_config_thin_vol.sh/ -type f -name "script*" 2>/dev/null
+  delegate_to: "{{ item.value }}"
+  register: found_scripts
+  ignore_errors: true
+  loop: "{{ vm_ips | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} ({{ item.value }})"
+  when: item.key not in (failed_vms | default([]))
+
+- name: Check logs on newly launched VM
+  shell: sudo grep -iE "ERROR" {{ item.1.stdout_lines | join(' ') }} || true
+  delegate_to: "{{ item.0.value }}"
+  register: vm_log_check
+  loop: "{{ vm_ips | dict2items | zip(found_scripts.results) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}"
+  when:
+    - item.1.stdout_lines is defined
+    - item.1.stdout_lines | length > 0
+
+- name: Fail if ERRORs are found in logs
+  fail:
+    msg: |
+      Found ERROR(s) in logs on {{ item.0.key }} ({{ item.0.value }}):
+      {{ item.1.stdout_lines | join('\n') }}
+  when:
+    - item.1.stdout_lines is defined
+    - item.1.stdout_lines | length > 0
+  loop: "{{ vm_ips | dict2items | zip(vm_log_check.results) | list }}"
+  loop_control:
+    label: "{{ item.0.key }}"
+
+- block:
+  - name: Import all tasks from cosign_upg.yml and run on each VM via ip_with_gw
+    import_tasks: cosign_upg.yml
+    delegate_to: "{{ ip_with_gw }}"
+    become: yes
+    become_method: sudo
+
+  - name: copy cosign_failed_vms to all VMs
+    copy:
+      src: "{{ cosign_failed_vms }}"
+      dest: "/DGdata/Software/{{ cosign_failed_vms | basename }}"
+      mode: '0644'
+    delegate_to: "{{ ip_with_gw }}"
+    become: yes
+    become_method: sudo
+  when: (repo_url is defined and repo_url is not none) and (cosign_pub_key_file is defined and cosign_pub_key_file is not none)
+
+- name: not appling cosign if both repo_url and cosign_pub_key_file is not defined
+  debug:
+    msg: "Skipping cosign verification as repo_url and cosign_pub_key_file is not defined"
+  when: (repo_url is defined or repo_url is none) and (cosign_pub_key_file is defined or cosign_pub_key_file is none)
+
+- name: Ensure 'dns' is appended to hosts line in /etc/nsswitch.conf
+  lineinfile:
+    path: /etc/nsswitch.conf
+    regexp: '^hosts:'
+    line: "hosts:      files myhostname dns"
+  delegate_to: "{{ ip_with_gw }}"
+  become: yes
+
+- name: Ensure nameserver 8.8.8.8 exists in /etc/resolv.conf
+  lineinfile:
+    path: /etc/resolv.conf
+    line: "nameserver 8.8.8.8"
+    state: present
+  delegate_to: "{{ ip_with_gw }}"
+  become: yes
+

@@ -1,0 +1,34 @@
+local_user: "{{ lookup('env', 'USER') }}"
+home_dir: "{{ lookup('env', 'HOME') }}"
+
+prev_patch: "{{ req_patch }}"
+prev_vm_patch: "{{ req_vm_patch }}"
+patch_vm : rhel-7.4-patch-vm-r9.0
+
+pub_key_file: "{{ home_dir }}/.ssh/id_rsa.pub"
+pub_key: "{{ lookup('file', pub_key_file) }}"
+ssh_user: autoinstall
+
+loaded_images: []
+ansible_ssh_pass: kodiak
+
+group: bare_metal_hosts
+
+group_vm: vm_hosts
+
+req_vm_patch: 13.0.0_eus
+
+release_vm_patch: 13.0.0_el8_10_D0
+
+qcow2: /DGdata/Loads/vm_13_0_0_Q2_2024_D5_bm_host_image_DQ5.qcow2
+qcow2_name: vm_13_0_0_Q2_2024_D5_bm_host_image_DQ5.qcow2
+
+repo_ip: 10.0.29.105
+upg_user: autoinstall
+certificate_domain: update-repo.kodiak.repo
+repository_name: RedHat_79_kodiak_D0-2020-09-30
+
+lv_name: podmanstorage
+lv_size: 300g
+lv_size_vm: 300g
+UpgradeType:

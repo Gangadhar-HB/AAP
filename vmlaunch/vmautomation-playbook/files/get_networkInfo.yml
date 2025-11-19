@@ -1,0 +1,119 @@
+---
+- name: Get the timezone from BM
+  shell: "timedatectl | grep -i 'Time zone' | awk '{ print $3 }'"
+  register: timezone
+
+- name: Number of vlan from user input file
+  set_fact:
+    no_vlan: "{{ item.networkInterface | length }}"
+
+- name: mac address for default virb0 and oambr-ext
+  set_fact:
+    default_mac_vir: "{{ '52:54:00' | community.general.random_mac  }}"
+    default_mac_oambr: "{{ '52:54:00' | community.general.random_mac  }}"
+
+
+- debug:
+   msg: "{{ default_mac_vir }}-----{{ default_mac_oambr }}"
+- name: mac address Hexadecimal digit
+  set_fact:
+    mac: "{{ '52:54:00' | community.general.random_mac  }}"
+  register: macs
+  loop: "{{ item.networkInterface }}"
+  loop_control:
+    loop_var: vlan
+
+- debug:
+   msg: "{{ macs.results }}"
+
+- name:
+  set_fact:
+    macList: "{{ macs.results | map(attribute='ansible_facts.mac') | list }}"
+- debug:
+    msg: "{{ item.networkInterface }}"
+
+- name: Reset bridgeList
+  set_fact:
+      bridgeList: []
+      AliasBridgeList: []
+
+- name: Get the bridge name from user input
+  set_fact:
+    bridgeList: "{{ bridgeList | default([]) + [Brlist.bridge]  }}"
+  loop: "{{ item.networkInterface }}"
+  loop_control:
+    loop_var: Brlist
+- debug:
+    msg: "{{ bridgeList }}"
+
+
+#alias bridge was added as part of 2U VM Migratio Support to support macv300,400,500 series.
+- name: Get the Alias bridge name from user input
+  set_fact:
+    AliasBridgeList: "{{ AliasBridgeList | default([]) + [AliasBrlist.alias_bridge]  }}"
+  loop: "{{ item.networkInterface }}"
+  loop_control:
+    loop_var: AliasBrlist
+  when: AliasBrlist is defined and AliasBrlist.alias_bridge is defined and AliasBrlist.alias_bridge is not none
+
+- name: display Alias Bridge List
+  debug:
+    msg: "{{ AliasBridgeList }}"
+
+- name: display  Bridge List
+  debug:
+    msg: "{{ bridgeList }}"
+
+#if len aliasbridge list > 0, then set a flag
+- name: Set the Alias Bridge flag based on the length of the list
+  set_fact:
+       Alias_Flag: "{{ 1 if AliasBridgeList | length > 0 else 0 }}"
+
+- name: display alias flag
+  debug:
+    msg: "{{ Alias_Flag }}"
+
+# add code to check length of alias bridge list is equal to length of bidgelist
+- name: fail the execution if Alias Bridge List is not empty and Lenth of Alias bridge not equal to length of Actual Bridge
+  fail: msg='Number of Alias Bridges does not match with Actual Bridges in input file'
+  when: (Alias_Flag == 1) and (AliasBridgeList | length != bridgeList | length)
+
+
+- name: Reset IpList
+  set_fact:
+    IpList: []
+    gwList: []
+
+- name: Get the list of Ip address
+  set_fact:
+    IpList: "{{ IpList | default([]) + [iplist.ipaddress] }}"
+  when: iplist.ipaddress is defined
+  loop: "{{ item.networkInterface }}"
+  loop_control:
+    loop_var: iplist
+
+- name: reset gateway
+  set_fact:
+    gateway: {}
+- name: get the gateway  of each bridge
+  set_fact:
+    gateway: "{{ gateway | combine({gtw.ipaddress : gtw.gw | default(omit)}) }}"
+  when: gtw.ipaddress is defined
+  loop: "{{ item.networkInterface }}"
+  loop_control:
+    loop_var: gtw
+
+- name: reset static route
+  set_fact:
+    routes: []
+- name: get the static route
+  set_fact:
+    routes: "{{ routes  | default([]) + [rt] }}"
+  loop: "{{ item.route }}"
+  loop_control:
+    loop_var: rt
+  when: item.route is defined
+
+- debug:
+    msg: "{{ routes }}"
+

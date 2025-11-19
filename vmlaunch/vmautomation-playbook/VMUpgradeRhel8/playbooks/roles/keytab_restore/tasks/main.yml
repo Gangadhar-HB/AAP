@@ -1,0 +1,115 @@
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+---
+# --- Fetch RHEL IDM admin password ---
+- name: Checking the rhelidm password
+  shell: |
+    source /etc/kodiakEMS.conf
+    ENC_RHELADMIN_PASSWD=$(/opt/TimesTen/kodiak/bin/ttIsql -connStr "dsn=emsdsn;uid=$EMSUSERID;pwd=$EMSPASSWORD" \
+      -e "select distinct PARAMVALUE from DG.MICROSVCS_COMMONCONFIG where paramname like '%RHELIDM_ADMIN_PW%';exit;" -v 1 \
+      | sed 's/< *//g' | sed 's/ *>//g' | sed 's/ *//g')
+    perl /DG/activeRelease/Tools/StrDec.pl --password=$ENC_RHELADMIN_PASSWD
+  register: rhelidmpw
+  delegate_to: localhost
+  run_once: true
+
+- fail:
+    msg: "Failed to fetch IPA password: {{ rhelidmpw.stderr_lines }}"
+  when: rhelidmpw.rc != 0
+  delegate_to: localhost
+  run_once: true
+
+- set_fact:
+    IdmPwd: "{{ rhelidmpw.stdout }}"
+  delegate_to: localhost
+  run_once: true
+
+- name: RHEL IDM login from control node
+  shell: echo "{{ IdmPwd }}" | kinit admin
+  register: kinit_admin
+  delegate_to: localhost
+  run_once: true
+
+- name: Get IPA master FQDN
+  shell: |
+    echo "{{ IdmPwd }}" | kinit admin
+    ipa config-show | grep -i "renewal" | cut -d':' -f2 | sed 's/ //g'
+  register: IPARENEWAL_FQDN
+  delegate_to: localhost
+  run_once: true
+
+- debug:
+    var: IPARENEWAL_FQDN.stdout_lines[1]
+  delegate_to: localhost
+  run_once: true
+
+# --- Restart SSSD in containers ---
+- name: Restart sssd in containers on this host
+  shell: docker exec {{ item }} bash -c "systemctl restart sssd"
+  loop: "{{ hostvars[inventory_hostname]['containers'] | default([]) }}"
+  when: hostvars[inventory_hostname]['containers'] | length > 0
+  ignore_errors: true
+
+# --- Check for keytab issue ---
+- name: Check occurrence of keytab issue in sssd service
+  shell: docker exec {{ item }} bash -c "systemctl status sssd | grep -i '{{ keytab_error_message }}'"
+  register: error_result
+  loop: "{{ hostvars[inventory_hostname]['containers'] | default([]) }}"
+  when: hostvars[inventory_hostname]['containers'] | length > 0
+  ignore_errors: yes
+
+# --- Copy keytab to affected containers ---
+- name: Copy the backup keytab to containers
+  shell: docker cp /DGdata/KEYTAB/krb5.keytab {{ item }}:/etc/krb5.keytab && docker exec {{ item }} bash -c "chmod 600 /etc/krb5.keytab"
+  loop: "{{ error_result.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+  ignore_errors: true
+
+# --- Restart SSSD after restore ---
+- name: Restart sssd after keytab restore
+  shell: docker exec {{ item }} bash -c  "systemctl restart sssd"
+  loop: "{{ error_result.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+  ignore_errors: true
+
+# --- Check again after restore ---
+- name: Check keytab issue after restore
+  shell: docker exec {{ item }} bash -c "systemctl status sssd | grep -i '{{ keytab_error_message }}'"
+  register: restored_keytab_error_result
+  loop: "{{ error_result.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+  ignore_errors: yes
+
+# --- Generate keytab from IDM master for still failing ---
+- name: Generate new keytab from IDM renewal master
+  shell: |
+    docker exec {{ item }} bash -c "
+      echo '{{ IdmPwd }}' | kinit admin &&
+      ipa-getkeytab -s {{ IPARENEWAL_FQDN.stdout_lines[1] }} -p host/$(hostname -f) -k /Software/krb5.keytab"
+  loop: "{{ restored_keytab_error_result.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+  ignore_errors: true
+
+# --- Copy new keytab to affected containers ---
+- name: Copy the new keytab to containers
+  shell: docker cp /DGdata/Software/krb5.keytab {{ item }}:/etc/krb5.keytab && docker exec {{ item }} bash -c "chmod 600 /etc/krb5.keytab" && docker exec {{ item }} bash -c "systemctl restart sssd"
+  loop: "{{ error_result.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+  ignore_errors: true
+
+# --- Final check ---
+- name: Check keytab issue after regeneration
+  shell: docker exec {{ item }} bash -c "systemctl status sssd | grep -i '{{ keytab_error_message }}'"
+  register: generated_keytab_error_result
+  loop: "{{ restored_keytab_error_result.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+  ignore_errors: yes
+
+# --- Gather failed containers globally ---
+- name: Store hostnames with keytab errors
+  set_fact:
+    hosts_with_keytab_errors: "{{ hosts_with_keytab_errors | default([]) + [item.item] }}"
+  loop: "{{ generated_keytab_error_result.results }}"
+  when: item.rc == 0
+
+# --- Fail if any still broken ---
+- fail:
+    msg: "Failed containers for keytab: {{ hosts_with_keytab_errors }}"
+  when: hosts_with_keytab_errors is defined and hosts_with_keytab_errors | length > 0
+  delegate_to: localhost
+  run_once: true

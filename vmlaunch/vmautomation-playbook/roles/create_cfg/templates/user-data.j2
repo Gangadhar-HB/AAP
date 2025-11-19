@@ -1,0 +1,69 @@
+#cloud-config
+ntp:
+  enabled: true
+  ntp_client: ntp
+
+timezone: {{ timezone.stdout }}
+ssh_pwauth: True
+write_files:
+  
+  - path: /root/install.cfg
+    permissions: '0777'
+    owner: root:root
+    content: |
+      install=true
+  
+  - path: /root/{{ item.vm_type }}_thin_pool_volume.cfg
+    permissions: '0777'
+    owner: root:root
+    content: |
+     {{ user_data_action.stdout | indent(6) }} 
+  
+  - path: /etc/systemd/system/partition.service
+    permissions: '0777'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=partition service
+      After=cloud-final.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/vm_config_thin_vol.sh -d 2 --device sdb create "/root/{{ item.vm_type }}_thin_pool_volume.cfg" "/root/install.cfg"
+      ExecStartPost=/bin/systemctl disable partition.service
+      [Install]
+      WantedBy=multi-user.target
+  
+  - path: /usr/local/bin/network_config.ini
+    permissions: '0777'
+    owner: root:root
+    content: |
+     {{ user_data_action_1.stdout | indent(5) }}
+  - path: /usr/local/bin/route_add.sh
+    permissions: '0777'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      LOGFILE="/var/log/route_add.log"
+
+{% if routes %}
+{% for rt in routes %}
+{% if effective_setup == "0" %}
+{% set macv_route = rt | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
+{% set macv_name = rt | regex_search('dpbr_([0-9]+)') | regex_replace('dpbr_([0-9]+)', 'macv\\1') %}
+      echo "creating route file for {{ macv_name }}" | tee -a "$LOGFILE"
+      echo "{{ macv_route }}" >> /etc/sysconfig/network-scripts/route-{{ macv_name }}
+{% else %}
+{% set eth0_route = rt | regex_replace('dpbr_([0-9]+)', 'eth0') %}
+      echo "creating route file for eth0" | tee -a "$LOGFILE"
+      echo "{{ eth0_route }}" >> /etc/sysconfig/network-scripts/route-eth0
+{% endif %}
+{% endfor %}
+{% else %}
+      echo "Routes are not defined in input file" | tee -a "$LOGFILE"
+{% endif %}
+
+runcmd:
+  - systemctl enable partition.service --now
+  - sh /usr/local/bin/route_add.sh
+  - touch /etc/cloud/cloud-init.disabled

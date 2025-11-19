@@ -1,0 +1,45 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+- name: Check if the logical volume exists
+  command: ls /dev/{{ dp_vg_name }}/{{ dp_lv_name }}
+  register: lv_exists
+  ignore_errors: yes
+
+- name: Proceed if the volume exists
+  become: yes
+  block:
+    - name: Format the LV to erase data
+      filesystem:
+        dev: /dev/{{ dp_vg_name }}/{{ dp_lv_name }}
+        fstype: ext4
+        force: yes
+
+
+    - name: Check if the LV is active
+      command: lvdisplay /dev/{{ dp_vg_name }}/{{ dp_lv_name }}
+      register: lvdisplay_output
+      failed_when: false
+      changed_when: false
+
+    - name: Make the LV inactive if it is active
+      command: lvchange -an /dev/{{ dp_vg_name }}/{{ dp_lv_name }}
+      when: 
+        - lv_exists.rc == 0
+        - "'LV Status' in lvdisplay_output.stdout"
+        - "'ACTIVE' in lvdisplay_output.stdout"
+
+    - name: Validate LV is inactive before removal
+      command: lvdisplay /dev/{{ dp_vg_name }}/{{ dp_lv_name }}
+      register: lv_status
+      failed_when: "'LV Status' not in lv_status.stdout or 'NOT available' in lv_status.stdout"
+
+    - name: Remove the logical volume
+      command: lvremove -f /dev/{{ dp_vg_name }}/{{ dp_lv_name }}
+    
+
+  when: lv_exists.rc == 0
+

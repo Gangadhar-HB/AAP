@@ -1,0 +1,8 @@
+# Prevent setuid programs from dumping core (CIS 1.5.1)
+fs.suid_dumpable = 0
+# Log packets with un-routable source addresses to the kernel log
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+# Prevents the kernel from logging bogus responses (RFC-1122 non-compliant) from broadcast reframes, 
+# keeping file systems from filling up with useless log messages
+net.ipv4.icmp_ignore_bogus_error_responses = 1

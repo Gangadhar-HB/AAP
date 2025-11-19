@@ -1,0 +1,32 @@
+#
+# Copyright Motorola Solutions, Inc. and/or Kodiak Networks, Inc.
+# All Rights Reserved
+# Motorola Solutions Confidential Restricted
+#
+---
+- name: zero out first 10MB of partition
+  command: sudo /usr/bin/dd if=/dev/zero of={{ os_partition.stdout }} bs=1024 count=1000 conv=notrunc
+  register: vm_dd
+  any_errors_fatal: true
+
+- name: check thick LV
+  command: sudo /usr/sbin/lvdisplay {{ os_partition.stdout }}
+  register: check_vm_lv
+  failed_when: check_vm_lv.rc != 0
+  any_errors_fatal: true
+
+- name: copy new image to VM's thick LV partition
+  command: sudo /usr/bin/qemu-img convert -p /home/autoinstall/{{ qcow2_name }} -O raw {{ os_partition.stdout }}
+  register: install_VM_output
+  any_errors_fatal: true
+
+- name: delete install.cfg
+  file: dest=/var/tftpd/install.cfg state=absent
+  ignore_errors: true
+
+#- name: checking install flag file
+#  stat: path=/var/tftpd/install.cfg
+#  register: installflag
+#  failed_when: installflag.stat.islnk is defined
+#  any_errors_fatal: true
+

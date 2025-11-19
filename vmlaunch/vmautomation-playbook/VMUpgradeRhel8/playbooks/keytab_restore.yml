@@ -1,0 +1,10 @@
+---
+- name: keytab restore
+  hosts: all
+  gather_facts: no
+  remote_user: "{{ upg_user }}"
+  become: true
+
+  roles:
+    - role: keytab_restore
+
