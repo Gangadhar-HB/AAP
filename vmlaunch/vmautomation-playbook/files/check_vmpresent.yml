@@ -8,5 +8,5 @@
 - block:
     - name: VM's already present in Baremetel
       set_fact:
-        already_present: "{{ already_present | default([]) + [name] }}"
-  when: name in vm_present.stdout
+        already_present: "{{ already_present | default([]) + [item.name] }}"
+  when: item.name in vm_present.stdout
