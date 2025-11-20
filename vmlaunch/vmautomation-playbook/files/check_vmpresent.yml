@@ -4,6 +4,7 @@
   community.libvirt.virt:
     command: list_vms
   register: vm_list
+  become: yes
 
 - block:
     - name: VM already present on Baremetal
