@@ -1,6 +1,6 @@
 ---
 # check_vm_present.yml
-- name: Check if VM {{ name }} is already present in {{ ansible_host }}
+- name: Check if VM {{ item.name }} is already present in {{ ansible_host }}
   shell: "sudo virsh list --all | tail -n +3 | awk '{print $2}'"
   register: vm_present
   ignore_errors: true
