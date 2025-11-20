@@ -21,7 +21,7 @@
       ansible.builtin.include_tasks: files/check_vmpresent.yml
       loop: "{{ vms }}"
       loop_control:
-        loop_var: item
+        loop_var: vm
     
     - name: VM Creation Block
       block:
