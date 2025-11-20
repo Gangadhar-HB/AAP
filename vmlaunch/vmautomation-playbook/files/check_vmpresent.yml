@@ -1,6 +1,6 @@
 ---
 # check_vm_present.yml
-- name: Check if VM {{ vm.name }} is already present in {{ ansible_host }}
+- name: Check if VM {{ item.name }} is already present in {{ ansible_host }}
   community.libvirt.virt:
     command: list_vms
   register: vm_list
@@ -9,6 +9,6 @@
 - block:
     - name: VM already present on Baremetal
       set_fact:
-        already_present: "{{ already_present | default([]) + [vm.name] }}"
-  when: vm.name in vm_list.list_vms
+        already_present: "{{ already_present | default([]) + [item.name] }}"
+  when: item.name in vm_list.list_vms
 
