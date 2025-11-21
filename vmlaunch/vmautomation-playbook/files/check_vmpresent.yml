@@ -1,13 +1,15 @@
-- name: Get list of VMs on {{ inventory_hostname }}
+---
+# check_vm_present.yml
+- name: Check if VM {{ item.name }} is already present in {{ ansible_host }}
   community.libvirt.virt:
     command: list_vms
   register: vm_list
-  become: yes
+  ignore_errors: true
 
-- name: Mark already present VMs
-  set_fact:
-    already_present: "{{ already_present | default([]) + [vm.name] }}"
-  loop: "{{ hostvars[inventory_hostname].vms }}"
-  loop_control:
-    loop_var: vm
-  when: vm.name in vm_list.list_vms
+
+- block:
+    - name: VM already present on Baremetal
+      set_fact:
+        already_present: "{{ already_present | default([]) + [item.name] }}"
+  when: item.name in vm_list.list_vms
+
