@@ -19,7 +19,6 @@
     
     - name: Check remote user
       ansible.builtin.command: whoami
-      delegate_to: "{{ ansible_host }}"
       register: who
       ignore_errors: true
     
