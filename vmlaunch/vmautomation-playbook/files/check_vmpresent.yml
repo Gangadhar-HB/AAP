@@ -1,15 +1,5 @@
 ---
 # check_vm_present.yml
-
-- name: Check remote user
-  ansible.builtin.command: whoami
-  delegate_to: "{{ ansible_host }}"
-  register: who
-  ignore_errors: true
-
-- debug:
-    var: who.stdout
-
 - name: Check if VM {{ item.name }} is already present in {{ ansible_host }}
   community.libvirt.virt:
     command: list_vms

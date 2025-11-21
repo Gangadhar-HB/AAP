@@ -17,6 +17,15 @@
       ansible.builtin.debug:
         msg: "{{ 'Setup Type is On-Prem' if effective_setup == '0' else 'Setup Type is Wavelite' }}"
     
+    - name: Check remote user
+      ansible.builtin.command: whoami
+      delegate_to: "{{ ansible_host }}"
+      register: who
+      ignore_errors: true
+    
+    - debug:
+        var: who.stdout
+
     - name: Check if VM is present
       ansible.builtin.include_tasks: files/check_vmpresent.yml
       loop: "{{ vms }}"
