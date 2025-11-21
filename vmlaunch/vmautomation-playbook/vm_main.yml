@@ -17,20 +17,6 @@
       ansible.builtin.debug:
         msg: "{{ 'Setup Type is On-Prem' if effective_setup == '0' else 'Setup Type is Wavelite' }}"
     
-    - name: Ensure tmp exists
-      file:
-        path: /tmp/.ansible-tmp
-        state: directory
-        mode: '0777'
-
-    - name: Check remote user
-      ansible.builtin.command: whoami
-      register: who
-      ignore_errors: true
-    
-    - debug:
-        var: who.stdout
-
     - name: Check if VM is present
       ansible.builtin.include_tasks: files/check_vmpresent.yml
       loop: "{{ vms }}"
