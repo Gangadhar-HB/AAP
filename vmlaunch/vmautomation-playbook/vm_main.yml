@@ -1,6 +1,6 @@
 ---
 - name: VM Provisioning Playbook
-  hosts: all
+  hosts: "{{ ansible_host }}"
   gather_facts: false
 
   vars:
