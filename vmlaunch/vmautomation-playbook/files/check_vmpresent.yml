@@ -1,11 +1,11 @@
 ---
 # check_vm_present.yml
-- name: Check if VM {{ item.name }} is already present in {{ item.hostip }}
+- name: Check if VM {{ item.name }} is already present in {{ ansible_host }}
   community.libvirt.virt:
     command: list_vms
   register: vm_list
   become: yes
-  delegate_to: "{{ item.hostip }}"
+  delegate_to: "{{ ansible_host }}"
   ignore_errors: true
   vars:
     ansible_remote_tmp: /tmp/.ansible
@@ -15,4 +15,4 @@
     - name: VM's already present in Baremetel
       set_fact:
         already_present: "{{ already_present | default([]) + [item.name] }}"
-  when: item.name in vm_present.stdout
+  when: item.name in vm_list.list_vms
