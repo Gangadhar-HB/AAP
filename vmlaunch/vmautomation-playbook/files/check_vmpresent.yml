@@ -6,7 +6,8 @@
   register: vm_list
   delegate_to: "{{ ansible_host }}"
   become: yes
-
+  run_once: true
+  loop: "{{ vms }}"
 
 - block:
     - name: VM already present on Baremetal

@@ -22,6 +22,8 @@
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
+      delegate_to: "{{ ansible_host }}"
+      run_once: true
     
     - name: VM Creation Block
       block:
