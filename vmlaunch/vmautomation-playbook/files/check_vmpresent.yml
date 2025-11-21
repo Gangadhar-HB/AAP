@@ -4,11 +4,14 @@
   community.libvirt.virt:
     command: list_vms
   register: vm_list
+  delegate_to: "{{ inventory_hostname }}"
   become: yes
+
 
 - block:
     - name: VM already present on Baremetal
       set_fact:
         already_present: "{{ already_present | default([]) + [item.name] }}"
   when: item.name in vm_list.list_vms
+
 
