@@ -1,7 +1,0 @@
----
-- name: "Delegate presence check for {{ item.name }}"
-  block:
-    - ansible.builtin.include_tasks: files/check_vmpresent.yml
-      vars:
-        vm: "{{ item }}"
-  delegate_to: "{{ item.hostip }}"

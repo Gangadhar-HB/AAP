@@ -1,9 +1,0 @@
----
-- hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: Generate configurations for all new VMs
-      ansible.builtin.include_tasks: wrapper_generate_configs.yml
-      loop: "{{ vms_to_create }}"
-      loop_control:
-        loop_var: item
