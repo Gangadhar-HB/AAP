@@ -1,18 +1,17 @@
 ---
-# check_vm_present.yml
-- name: Check if VM {{ item.name }} is already present in {{ ansible_host }}
+# Always run this on the Baremetal host
+- name: Get list of VMs on {{ ansible_host }}
   community.libvirt.virt:
     command: list_vms
   register: vm_list
   delegate_to: "{{ ansible_host }}"
   become: yes
-  run_once: true
-  loop: "{{ vms }}"
 
-- block:
-    - name: VM already present on Baremetal
-      set_fact:
-        already_present: "{{ already_present | default([]) + [item.name] }}"
-  when: item.name in vm_list.list_vms
-
-
+# Loop over vms but WITHOUT connecting to the VM IP
+- name: Mark already present VMs
+  set_fact:
+    already_present: "{{ already_present | default([]) + [vm.name] }}"
+  loop: "{{ hostvars[inventory_hostname].vms }}"
+  loop_control:
+    loop_var: vm
+  when: vm.name in vm_list.list_vms
