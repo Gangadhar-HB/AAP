@@ -4,7 +4,7 @@
   community.libvirt.virt:
     command: list_vms
   register: vm_list
-  delegate_to: "{{ inventory_hostname }}"
+  delegate_to: "{{ ansible_host }}"
   become: yes
 
 
