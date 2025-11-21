@@ -5,11 +5,8 @@
     command: list_vms
   register: vm_list
   become: yes
-  delegate_to: "{{ ansible_host }}"
   ignore_errors: true
-  vars:
-    ansible_remote_tmp: /tmp/.ansible
-  
+
 
 - block:
     - name: VM's already present in Baremetel
