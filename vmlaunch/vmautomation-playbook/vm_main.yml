@@ -1,6 +1,6 @@
 ---
 - name: VM Provisioning Playbook
-  hosts: "{{ ansible_host }}"
+  hosts: all
   gather_facts: false
 
   vars:
@@ -17,6 +17,10 @@
       ansible.builtin.debug:
         msg: "{{ 'Setup Type is On-Prem' if effective_setup == '0' else 'Setup Type is Wavelite' }}"
     
+    - name: DEBUG – show vms list
+      debug:
+        var: vms
+
     - name: Check if VM is present
       ansible.builtin.include_tasks: files/check_vmpresent.yml
       loop: "{{ vms }}"
