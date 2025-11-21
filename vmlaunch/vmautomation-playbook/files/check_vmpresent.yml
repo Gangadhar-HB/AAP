@@ -4,6 +4,7 @@
   community.libvirt.virt:
     command: list_vms
   register: vm_list
+  delegate_to: "{{ ansible_host }}"
   ignore_errors: true
 
 
