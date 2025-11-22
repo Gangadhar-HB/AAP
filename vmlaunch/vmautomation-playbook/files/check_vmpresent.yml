@@ -5,7 +5,7 @@
     command: list_vms
     uri: qemu:///system
   register: vm_list
-  ignore_errors: true
+  delegate_to: "{{ ansible_host }}"
 
 - name: Add VM to already_present list if it exists
   ansible.builtin.set_fact:
