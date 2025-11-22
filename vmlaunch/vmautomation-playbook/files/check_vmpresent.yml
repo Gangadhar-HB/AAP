@@ -5,7 +5,7 @@
     command: list_vms
     uri: "qemu+ssh://{{ ansible_user }}@{{ inventory_hostname }}/system"
   register: vm_list
-  delegate_to: localhost
+  delegate_to: "{{ ansible_host }}"
   vars:
     ansible_python_interpreter: /usr/bin/python3
 
