@@ -3,7 +3,6 @@
 - name: Check if VM {{ item.name }} is already present on {{ ansible_host }}
   community.libvirt.virt:
     command: list_vms
-    uri: "qemu+ssh://root@{{ ansible_host }}/system"
   register: vm_list
   delegate_to: localhost
   vars:
