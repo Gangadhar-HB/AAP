@@ -8,6 +8,14 @@
   vars:
     ansible_python_interpreter: /usr/bin/python3
 
+- name: Get LV info from the VG
+  community.general.lvol_info:
+    vg: "{{ vg_name }}"
+  register: lvinfo
+  delegate_to: "{{ ansible_host }}"
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
 - name: Add VM to already_present list if it exists
   ansible.builtin.set_fact:
     already_present: "{{ already_present | default([]) + [item.name] }}"
