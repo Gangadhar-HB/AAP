@@ -72,7 +72,8 @@
         mode: '0644'
         content: |
           {% for key, value in vm.vm_partition.items() %}
-          {{ key }}={{ value }}
+          {{ key }}={{ value }},/{{ key }},0755,null,ext4,defaults
+
           {% endfor %}
       loop: "{{ vms }}"
       loop_control:
