@@ -8,6 +8,9 @@
 - name: Parse LV JSON
   set_fact:
     lvdata: "{{ lvjson.stdout | from_json }}"
+- debug:
+    var: lvdata
+    
 - name: Check if thin pool 'kpool' exists
   set_fact:
     kpool_info: "{{ lvdata.report[0].lv | selectattr('lv_name','equalto','kpool') | list }}"
