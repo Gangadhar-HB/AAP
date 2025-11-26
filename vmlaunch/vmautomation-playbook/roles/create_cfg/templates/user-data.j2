@@ -17,7 +17,7 @@ write_files:
     permissions: '0777'
     owner: root:root
     content: |
-     {{ user_data_action.stdout | indent(6) }} 
+     {{ user_data_action | indent(6) }} 
   
   - path: /etc/systemd/system/partition.service
     permissions: '0777'
@@ -38,7 +38,7 @@ write_files:
     permissions: '0777'
     owner: root:root
     content: |
-     {{ user_data_action_1.stdout | indent(5) }}
+     {{ user_data_action_1 | indent(5) }}
   - path: /usr/local/bin/route_add.sh
     permissions: '0777'
     owner: root:root
