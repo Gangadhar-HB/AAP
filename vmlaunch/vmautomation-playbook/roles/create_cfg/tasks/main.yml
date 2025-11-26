@@ -69,6 +69,7 @@
     - name: Create dynamic Jinja2 templates
       ansible.builtin.copy:
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
+        mode: '0644'
         content: |
           {% for key, value in vm.vm_partition.items() %}
           {{ key }}={{ value }}
@@ -76,15 +77,30 @@
       loop: "{{ vms }}"
       loop_control:
         loop_var: vm
-
+    
+    
+    # -------------------------------------------------------
+    # Read each generated template back and store content per VM
+    # -------------------------------------------------------
+    
     - name: Read thin pool cfg template
       ansible.builtin.slurp:
-        src: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg.j2"
+        src: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: vm
       register: thin_template_raw
-
-    - name: Store thin pool content
+    
+    
+    - name: Store thin pool content per VM
       ansible.builtin.set_fact:
-        user_data_action: "{{ thin_template_raw.content | b64decode }}"
+        user_data_action: >-
+          {{ user_data_action | default({}) |
+             combine({ vm.vm_type: (item.content | b64decode) }) }}
+      loop: "{{ thin_template_raw.results }}"
+      loop_control:
+        loop_var: item
+
 
     - name: Create directory for ISO
       ansible.builtin.file:

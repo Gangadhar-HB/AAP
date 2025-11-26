@@ -17,11 +17,8 @@ write_files:
     permissions: '0777'
     owner: root:root
     content: |
-    {% for vol in vm_volumes %}
-      {{ vol.name }}={{ vol.size }}G,/{{ vol.name }},0755,null,ext4,defaults
-    {% endfor %}
-  
-      {{ user_data_action | indent(4) }}
+      {{ user_data_action[item.vm_type] | indent(6) }}
+
   
   - path: /etc/systemd/system/partition.service
     permissions: '0777'
