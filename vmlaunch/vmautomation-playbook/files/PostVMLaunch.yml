@@ -17,6 +17,8 @@
   set_fact:
     vm_ips: "{{ vm_ips | combine({ item.name: ip_with_gw }) }}"
 
+- debug:
+    msg: "VM IPs: {{ vm_ips }}"
 
 - name: Wait for SSH (port 22) on all VM primary IPs
   wait_for:
