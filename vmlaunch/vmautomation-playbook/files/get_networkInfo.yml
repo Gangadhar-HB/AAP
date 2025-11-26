@@ -94,11 +94,17 @@
 - debug:
     var: gateway
     
-- name: Build static routes list
+- name: reset static route
   set_fact:
-    routes: "{{ routes | default([]) + [r] }}"
-  loop: "{{ routes_input }}"
+    routes: []
+    
+- name: get the static route
+  set_fact:
+    routes: "{{ routes  | default([]) + [rt] }}"
+  loop: "{{ item.route }}"
   loop_control:
-    loop_var: r
+    loop_var: rt
+  when: item.route is defined
+
 - debug:
-    var: routes
+    msg: "{{ routes }}"
