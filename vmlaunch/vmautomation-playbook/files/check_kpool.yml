@@ -1,54 +1,53 @@
 ---
-# ---------------------------------------------------------------
-# 1. Get LV information and check if kpool exists
-# ---------------------------------------------------------------
-- name: Get LV info
-  community.general.lvm_lv_info:
-    vg: "{{ vg_name }}"
-  register: lvinfo
-
-- name: Determine if kpool exists
+# ----------------------------------------------------------
+# 1. Read LV details as JSON (SUPPORTED)
+# ----------------------------------------------------------
+- name: Read LV details using LVM JSON
+  command: "lvs --reportformat json"
+  register: lvjson
+- name: Parse LV JSON
   set_fact:
-    hasKpool: "{{ 'kpool' in (lvinfo.lvs | map(attribute='lv_name') | list) }}"
-    
-# ---------------------------------------------------------------
-# 2. When kpool exists → calculate its size
-# ---------------------------------------------------------------
+    lvdata: "{{ lvjson.stdout | from_json }}"
+- name: Check if thin pool 'kpool' exists
+  set_fact:
+    kpool_info: "{{ lvdata.report[0].lv | selectattr('lv_name','equalto','kpool') | list }}"
+    hasKpool: "{{ kpool_info | length > 0 }}"
+# ----------------------------------------------------------
+# 2. Existing thin pool → read size
+# ----------------------------------------------------------
 - block:
-    - name: Extract kpool LV info
+    - name: Set existing thin pool size
       set_fact:
-        kpool: "{{ lvinfo.lvs | selectattr('lv_name','equalto','kpool') | first }}"
-    - name: Calculate thin pool size (convert major+minor units to GB)
-      set_fact:
-        thinPoolsize: "{{ (kpool.lv_size|float) | int }}"
+        thinPoolsize: "{{ (kpool_info[0].lv_size | float) | int }}"
   when: hasKpool
-# ---------------------------------------------------------------
-# 3. When kpool NOT exists → create new thin pool
-# ---------------------------------------------------------------
+# ----------------------------------------------------------
+# 3. Create a new thin pool if it does NOT exist
+# ----------------------------------------------------------
 - block:
-    # ---- Get VG details (free space etc.) ----
-    - name: Get VG info
-      community.general.lvm_vg_info:
-        vg: "{{ vg_name }}"
-      register: vginfo
-    - name: Calculate free space (GB)
+    # --- Read VG info ---
+    - name: Read VG info in colon format
+      command: "vgdisplay --colon {{ vg_name }}"
+      register: vgdata
+    - name: Extract free space from VG
       set_fact:
-        freespace: "{{ (vginfo.vgs[0].free | float) | int }}"
-    - name: Calculate 80% of free space
+        freePE: "{{ vgdata.stdout.split(':')[15] | int }}"
+        peSize: "{{ vgdata.stdout.split(':')[12] | int }}"
+        freespace: "{{ (freePE * peSize) / 1024 / 1024 }}"
+    - name: Calculate new thin pool size (80% free)
       set_fact:
-        new_thinpoolsize: "{{ ((freespace * thinpool_percent / 100) | int) }}"
-    - name: Fail when thinpool > free space
+        new_thinpoolsize: "{{ (freespace * thinpool_percent / 100) | int }}"
+    - name: Check if enough free space exists
       fail:
-        msg: "Thinpool size {{ new_thinpoolsize }} GB cannot exceed free space {{ freespace }} GB."
-      when: new_thinpoolsize|int > freespace|int
-    - name: Create thin pool
-      community.general.lvm_lv:
+        msg: "Not enough free space: need {{ new_thinpoolsize }} GB but have {{ freespace }} GB"
+      when: new_thinpoolsize | int > freespace | int
+    - name: Create new thin pool using supported module
+      community.general.lvol:
         vg: "{{ vg_name }}"
         lv: "kpool"
         size: "{{ new_thinpoolsize }}g"
         thinpool: true
       become: true
-    - name: Set thinPoolsize fact
+    - name: Register created thin pool size
       set_fact:
         thinPoolsize: "{{ new_thinpoolsize }}"
   when: not hasKpool
