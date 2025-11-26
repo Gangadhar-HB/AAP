@@ -116,7 +116,4 @@
         volid: cidata
         joliet: true
         rock_ridge: true
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: item
       become: true
