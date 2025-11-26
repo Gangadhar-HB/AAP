@@ -5,7 +5,7 @@
 - name: fetch IP address from the vlan having gateway
   set_fact:
      ip_with_gw: "{{item.ipaddress.split('/')[0]}}"
-  loop: "{{vm.networkInterface}}"
+  loop: "{{item.networkInterface}}"
   when: item.gw is defined and item.gw != ''
 
 - name: display ipaddress
@@ -15,7 +15,7 @@
 
 - name: Build vm_ips dictionary from IP results
   set_fact:
-    vm_ips: "{{ vm_ips | combine({ vm.name: ip_with_gw }) }}"
+    vm_ips: "{{ vm_ips | combine({ item.name: ip_with_gw }) }}"
 
 
 - name: Wait for SSH (port 22) on all VM primary IPs
