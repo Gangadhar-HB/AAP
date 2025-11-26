@@ -106,7 +106,7 @@
         loop_var: file
       become: true
 
-    - name: Create cloud-init ISO image (native replacement)
+    - name: Create cloud-init ISO image for {{ item.name }}
       community.general.iso_create:
         dest: "/cloudinitiso/{{ item.name }}/{{ item.name }}_ciiso.iso"
         files:
@@ -116,4 +116,6 @@
         joliet: true
         rock_ridge: true
       become: true
+      vars:
+        ansible_python_interpreter: /usr/local/bin/python3
 
