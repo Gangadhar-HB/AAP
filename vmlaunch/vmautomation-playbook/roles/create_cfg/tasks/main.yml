@@ -106,16 +106,17 @@
         loop_var: file
       become: true
 
-    - name: Create cloud-init ISO image for {{ item.name }}
+
+    - name: Create cloud-init ISO image
       community.general.iso_create:
-        dest: "/cloudinitiso/{{ item.name }}/{{ item.name }}_ciiso.iso"
+        dest: "/cloudinitiso/{{ item.name }}_ciiso.iso"
         files:
           user-data: "/cloudinitiso/{{ item.name }}/user-data"
           meta-data: "/cloudinitiso/{{ item.name }}/meta-data"
         volid: cidata
         joliet: true
         rock_ridge: true
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: item
       become: true
-      vars:
-        ansible_python_interpreter: /usr/local/bin/python3
-
