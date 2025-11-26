@@ -27,6 +27,9 @@
         PostgresWal: "{{ item.vm_partition.PostgresWal_size | default(omit) }}"
         Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
 
+    ###########################################################################
+    # NETWORK CONFIG FOR ONPREM
+    ###########################################################################
 
     - block:
 
@@ -40,13 +43,22 @@
           ansible.builtin.slurp:
             src: "/tmp/network_{{ vm_name }}.ini"
           register: netfile
+        
+        - debug:
+            msg: "{{ netfile }}"
 
         - name: Store network cfg for cloud-init
           ansible.builtin.set_fact:
             user_data_action_1: "{{ netfile.content | b64decode }}"
 
+        - debug:
+          msg: user_data_action_1
+
       when: effective_setup == "0"
 
+    ###########################################################################
+    # NETWORK CONFIG FOR WAVELITE
+    ###########################################################################
     - block:
 
         - name: Create wavelite network file (template)
@@ -66,6 +78,9 @@
 
       when: effective_setup == "1"
 
+    ###########################################################################
+    # CREATE THIN POOL JINJA TEMPLATE FOR EACH VM
+    ###########################################################################
     - name: Create dynamic Jinja2 templates
       ansible.builtin.copy:
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
@@ -86,6 +101,9 @@
       ansible.builtin.set_fact:
         user_data_action: "{{ thin_template_raw.content | b64decode }}"
 
+    ###########################################################################
+    # CLOUD-INIT DIRECTORY
+    ###########################################################################
     - name: Create directory for ISO
       ansible.builtin.file:
         path: "/cloudinitiso/{{ item.name }}"
@@ -95,6 +113,9 @@
         mode: '0755'
       become: true
 
+    ###########################################################################
+    # RENDER user-data + meta-data
+    ###########################################################################
     - name: Generate cloudinit file for {{ item.name }}
       ansible.builtin.template:
         src: "{{ file }}.j2"
@@ -106,6 +127,9 @@
         loop_var: file
       become: true
 
+    ###########################################################################
+    # GENERATE ISO USING ANSIBLE-NATIVE MODULE (NO SHELL)
+    ###########################################################################
     - name: Create cloud-init ISO image (native replacement)
       community.general.iso_create:
         dest: "/cloudinitiso/{{ item.name }}/{{ item.name }}_ciiso.iso"
@@ -116,3 +140,4 @@
         joliet: true
         rock_ridge: true
       become: true
+
