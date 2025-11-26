@@ -82,6 +82,9 @@
       become_user: root
       register: user_data_action
 
+    - debug:
+        var: user_data_action
+
     - name: Create directory for ISO
       file:
          path: "/cloudinitiso/{{ item.name }}"
