@@ -52,7 +52,7 @@
             user_data_action_1: "{{ netfile.content | b64decode }}"
 
         - debug:
-          msg: user_data_action_1
+            msg: user_data_action_1
 
       when: effective_setup == "0"
 
