@@ -16,11 +16,19 @@
 - name: Detect thin pool 'kpool'
   set_fact:
     kpool_info: >-
-      {{ lvdata.report[0].lv
-         | selectattr('lv_name','equalto','kpool')
-         | list
-         | default([]) }}
+      {{
+        (
+          lvdata
+          | default({})
+        ).get('report', [])
+        | first
+        | default({})
+        .get('lv', [])
+        | selectattr('lv_name', 'equalto', 'kpool')
+        | list
+      }}
     hasKpool: "{{ kpool_info | length > 0 }}"
+
 
 # Debug (Optional)
 - debug:
