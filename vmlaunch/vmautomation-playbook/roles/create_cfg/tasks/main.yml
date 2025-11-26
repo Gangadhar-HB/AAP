@@ -85,6 +85,9 @@
       loop_control:
         loop_var: vm
       register: thin_template_raw
+
+    - debug:
+        var: thin_template_raw
     
     - name: Store thin pool content per VM
       ansible.builtin.set_fact:
