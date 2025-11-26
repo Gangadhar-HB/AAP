@@ -1,65 +1,54 @@
 ---
-- name: check the thin pool is present or not
-  shell: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
-  register: hasKpool
+# ---------------------------------------------------------------
+# 1. Get LV information and check if kpool exists
+# ---------------------------------------------------------------
+- name: Get LV info
+  community.general.lvm_lv_info:
+    vg: "{{ vg_name }}"
+  register: lvinfo
 
+- name: Determine if kpool exists
+  set_fact:
+    hasKpool: "{{ 'kpool' in (lvinfo.lvs | map(attribute='lv_name') | list) }}"
+    
+# ---------------------------------------------------------------
+# 2. When kpool exists → calculate its size
+# ---------------------------------------------------------------
 - block:
-   - name: get the thinpool unit
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
-     register: kpoolsize_unit
-
-   - name: check the thin pool size
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
-     register: kpoolsize_tb
-     when: kpoolsize_unit.stdout == "t"
-
-   - name: check the thin pool size
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
-     register: kpoolsize_gb
-     when: kpoolsize_unit.stdout == "g"
-
-
-   - set_fact:
-      thinPoolsize:  "{{ kpoolsize_tb.stdout }}"
-     when: kpoolsize_unit.stdout == "t"
-
-   - set_fact:
-      thinPoolsize:  "{{ kpoolsize_gb.stdout }}"
-     when: kpoolsize_unit.stdout == "g"
-
-
-  when: hasKpool.stdout != ''
-
+    - name: Extract kpool LV info
+      set_fact:
+        kpool: "{{ lvinfo.lvs | selectattr('lv_name','equalto','kpool') | first }}"
+    - name: Calculate thin pool size (convert major+minor units to GB)
+      set_fact:
+        thinPoolsize: "{{ (kpool.lv_size|float) | int }}"
+  when: hasKpool
+# ---------------------------------------------------------------
+# 3. When kpool NOT exists → create new thin pool
+# ---------------------------------------------------------------
 - block:
-   - name: get the free space
-     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
-     register: freespace
-
-
-   - name: "calculate the 80 percent of free space"
-     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
-     register: new_thinpoolsize
-
-
-
-   - name: check the free space and create thin pool if not created
-     shell: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
-     when: hasKpool.stdout == '' and ( new_thinpoolsize.stdout | int ) < ( freespace.stdout | int )
-     become: true
-     become_user: root
-     failed_when: ( new_thinpoolsize.stdout | int ) > ( freespace.stdout | int )
-
-   - set_fact:
-      thinPoolsize: "{{ new_thinpoolsize.stdout }}"
-
-  when: hasKpool.stdout == ''
-
-#- name: Execute role
-#  include_tasks: files/execute_roles.yml
-#  args:
-#    apply:
-#      delegate_to: "{{ item.hostip }}"
-#      run_once: true
-#  with_items: "{{ vms }}"
-#  loop_control:
-#    loop_var: item
+    # ---- Get VG details (free space etc.) ----
+    - name: Get VG info
+      community.general.lvm_vg_info:
+        vg: "{{ vg_name }}"
+      register: vginfo
+    - name: Calculate free space (GB)
+      set_fact:
+        freespace: "{{ (vginfo.vgs[0].free | float) | int }}"
+    - name: Calculate 80% of free space
+      set_fact:
+        new_thinpoolsize: "{{ ((freespace * thinpool_percent / 100) | int) }}"
+    - name: Fail when thinpool > free space
+      fail:
+        msg: "Thinpool size {{ new_thinpoolsize }} GB cannot exceed free space {{ freespace }} GB."
+      when: new_thinpoolsize|int > freespace|int
+    - name: Create thin pool
+      community.general.lvm_lv:
+        vg: "{{ vg_name }}"
+        lv: "kpool"
+        size: "{{ new_thinpoolsize }}g"
+        thinpool: true
+      become: true
+    - name: Set thinPoolsize fact
+      set_fact:
+        thinPoolsize: "{{ new_thinpoolsize }}"
+  when: not hasKpool
