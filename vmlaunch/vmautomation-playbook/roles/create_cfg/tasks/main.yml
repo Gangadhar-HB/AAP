@@ -91,10 +91,10 @@
          mode: '0755'
       become: true
 
-    - name: generate cloudinit file for {{ item.vm_type }}
+    - name: generate cloudinit file for {{ item.name}}
       template:
           src: "{{ file }}.j2"
-          dest: "/cloudinitiso/{{ vm_name }}/{{ file }}"
+          dest: "/cloudinitiso/{{ item.name }}/{{ file }}"
       become: true
       become_user: root
       loop:
@@ -104,6 +104,6 @@
         loop_var: file
 
     - name: Run the VM tmos confg-2 iso
-      shell: "cd /cloudinitiso/{{ vm_name }} ; genisoimage -output {{ vm_name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
+      shell: "cd /cloudinitiso/{{ item.name }} ; genisoimage -output {{ item.name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
       become: true
       become_user: root
