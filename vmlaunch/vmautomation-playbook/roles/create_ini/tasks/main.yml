@@ -7,23 +7,23 @@
       fail:
         msg: "ERROR: f5_config section is required for F5 VM types but is missing"
       when:
-        - "'F5' in vm_type"
+        - "'F5' in item.vm_type"
         - item.f5_config is not defined
 
     - name: Validate minimum network interfaces
       fail:
         msg: "ERROR: At least 3 network interfaces required for F5 (management + external + internal)"
       when:
-        - "'F5' in vm_type"
+        - "'F5' in item.vm_type"
         - item.networkInterface is not defined or item.networkInterface | length < 3
 
-  when: "'F5' in vm_type"
+  when: "'F5' in item.vm_type"
 
 
 
 - name: Check the BM thin-pool 
   include_tasks: files/check_kpool.yml
-  when: "'F5' not in vm_type"
+  when: "'F5' not in item.vm_type"
 
 - name: Get the network details
   include_tasks: files/get_networkInfo.yml
@@ -49,7 +49,7 @@
       debug:
         msg:
           - "=== F5 Configuration Summary ==="
-          - "VM Name: {{ name }}"
+          - "VM Name: {{ vm_name }}"
           - "F5 Config Section: {{ 'Present' if F5_config_exists else 'Not defined (using defaults)' }}"
           - "Hostname: {{ F5_hostname }}"
           - "Management IP: {{ F5_mgmtIP }}"
@@ -63,7 +63,7 @@
           - "DNS Servers: {{ F5_dns_servers}} defined"
  
     
-    - name: Create cloudini user-data for {{ vm_type }}
+    - name: Create cloudini user-data for {{ item.vm_type }}
       local_action: "command scp  /usr/local/bin/vmautomation-playbook/files/tmos_configdrive_builder.py  autoinstall@{{ item.hostip }}:/tmp"
     
     - name: Create a directory
@@ -81,10 +81,10 @@
       become: true
       become_user: root
 
-    - name: generate cloudinit file for {{ vm_type }}
+    - name: generate cloudinit file for {{ item.vm_type }}
       template:
           src: "user_data.j2"
-          dest: "/declarations/user_data_{{ name }}"
+          dest: "/declarations/user_data_{{ vm_name }}"
       become: true
       become_user: root
     
@@ -92,13 +92,13 @@
       command: "{{ commands }}"
       loop:
        - "chmod 755 /tmp/tmos_configdrive_builder.py"
-       - "python3 /tmp/tmos_configdrive_builder.py {{ name }}"
+       - "python3 /tmp/tmos_configdrive_builder.py {{ vm_name }}"
       loop_control:
         loop_var: commands
       become: true
       become_user: root
     - set_fact:
-       name: "{{ name }}"
+       vm_name: "{{ vm_name }}"
        vm_ram: "{{ item.vm_resource.RAM }}"
        vm_cpu: "{{ item.vm_resource.VCPU }}"
        vm_disk_size: "{{ item.vm_resource.DataDiskSize }}"
@@ -107,33 +107,33 @@
   
     - name: Create directory for F5 VM config
       file:
-       path: "/usr/local/etc/vm_configs/{{ name }}"
+       path: "/usr/local/etc/vm_configs/{{ vm_name }}"
        state: directory
        owner: root
        group: root
        mode: '0755'
       become: true
  
-    - name: Generate INI for "{{ name }}" 
+    - name: Generate INI for "{{ vm_name }}" 
       template:
         src: "F5.ini.j2"
-        dest: "/usr/local/etc/vm_configs/{{name}}/{{ name }}.ini"
+        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
       become: true
       become_user: root
   
-    - name: Generate INI for "{{ name }}"
+    - name: Generate INI for "{{ vm_name }}"
       template:
         src: "F5.ini.j2"
-        dest: "/usr/local/etc/{{ name }}.ini"
+        dest: "/usr/local/etc/{{ vm_name }}.ini"
       become: true
       become_user: root
   
-  #when: "'F5' in vm_type and name not in vm_present.stdout"
-  when: "'F5' in vm_type"
+  #when: "'F5' in item.vm_type and vm_name not in vm_present.stdout"
+  when: "'F5' in item.vm_type"
 
 - block:
   - set_fact:
-      name: "{{ name }}"
+      vm_name: "{{ vm_name }}"
       vm_ram: "{{ item.vm_resource.RAM }}"
       vm_cpu: "{{ item.vm_resource.VCPU }}"
       vm_disk_size: "{{ item.vm_resource.DataDiskSize }}"
@@ -142,7 +142,7 @@
   
   - name: Create directory for VM config
     file:
-     path: "/usr/local/etc/vm_configs/{{ name }}"
+     path: "/usr/local/etc/vm_configs/{{ vm_name }}"
      state: directory
      owner: root
      group: root
@@ -151,40 +151,40 @@
   
   - block: 
 
-    - name: Generate INI for On-prem "{{ name }}" 
+    - name: Generate INI for On-prem "{{ vm_name }}" 
       template:
         src: "vm.ini.j2"
-        dest: "/usr/local/etc/vm_configs/{{name}}/{{ name }}.ini"
+        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
       become: true
       become_user: root
     
-    - name: Generate INI for On-prem  "{{ name }}"
+    - name: Generate INI for On-prem  "{{ vm_name }}"
       template:
         src: "vm.ini.j2"
-        dest: "/usr/local/etc/{{ name }}.ini"
+        dest: "/usr/local/etc/{{ vm_name }}.ini"
       become: true
       become_user: root
 
     when: effective_setup == "0"
   - block: 
 
-    - name: Generate INI for wavelite "{{ name }}" 
+    - name: Generate INI for wavelite "{{ vm_name }}" 
       template:
         src: "wavelite_vm.ini.j2"
-        dest: "/usr/local/etc/vm_configs/{{name}}/{{ name }}.ini"
+        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
       become: true
       become_user: root
     
-    - name: Generate INI for wavelite  "{{ name }}"
+    - name: Generate INI for wavelite  "{{ vm_name }}"
       template:
         src: "wavelite_vm.ini.j2"
-        dest: "/usr/local/etc/{{ name }}.ini"
+        dest: "/usr/local/etc/{{ vm_name }}.ini"
       become: true
       become_user: root
 
     when: effective_setup == "1"
 
-  when: "'F5' not in vm_type"
+  when: "'F5' not in item.vm_type"
 
    
 
