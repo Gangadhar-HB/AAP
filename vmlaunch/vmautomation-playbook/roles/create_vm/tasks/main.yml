@@ -7,44 +7,48 @@
       shell: "sudo bash -x /usr/local/bin/vm_build_and_install.sh -d 4 -v  RESTORE {{ vm_name }} "
       register: vm_creation_result
       ignore_errors: true
-    
-    - block:
 
+    - block:
         - name: Append VM to Failed list
           set_fact:
             failed_vms: "{{ failed_vms | default([]) + [vm_name] }}"
-        
-        - name: "delete the lvm partition for the failed VM if created"
-          shell: "sudo lvremove /dev/{{ vg_name }}/{{ vm_name }}_part /dev/{{ vg_name }}/{{ vm_name }}_vol -y"
+
+        - name: Remove LV partitions for failed VM
+          community.general.lvol:
+            vg: "{{ vg_name }}"
+            lv: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ vm_name }}_part"
+            - "{{ vm_name }}_vol"
           ignore_errors: true
- 
-      when: vm_creation_result is not succeeded or ( vm_creation_result.stdout | regex_search('virt-install command returned error') )
-    
-    - block: 
+
+      when: vm_creation_result is failed
+
+    - block:
         - name: Append VM to successful list
           set_fact:
             successful_vms: "{{ successful_vms | default([]) + [vm_name] }}"
 
+        - name: Wait for VM to be running
+          community.libvirt.virt:
+            name: "{{ vm_name }}"
+            state: running
+            timeout: 600
 
-        - name: check the state of vm that are launched 
-          shell: sudo virsh -c qemu:///system dominfo {{ vm_name }} | grep "State" | awk '{ print $2 }'
-          register: vm_check
-          until: vm_check.stdout.find("running") != -1
-          retries: 20
-          delay: 30
-          ignore_errors: true
-
-        - name: Create a dictionary with vm state
+        - name: Register VM state
           set_fact:
-            vm_state: "{{ vm_state | default({}) | combine( { vm_name : vm_check.stdout }) }}"
-        
+            vm_state: "{{ vm_state | default({}) | combine({ vm_name: 'running' }) }}"
+
         - debug:
             msg:
-            - "Successfully launched VMs: {{ successful_vms }}" 
-            - "{{ vm_state }}"
-      when: vm_creation_result is succeeded and ( vm_creation_result.stdout | regex_search('Domain creation completed') )
+              - "Successfully launched VMs: {{ successful_vms }}"
+              - "{{ vm_state }}"
+
+      when: vm_creation_result is succeeded
 
 - name: List of failed VMs
   debug:
-    msg: "Failed VMs list: {{failed_vms | default([]) }}"
+    msg: "Failed VMs list: {{ failed_vms | default([]) }}"
+
 
