@@ -81,17 +81,16 @@
           {% for key, value in vm_partition.items() %}
           {{ key }}={{ value }}
           {% endfor %}
-      loop: "{{ vm_partition_list }}"
+      loop: "{{ vm_partition }}"
       loop_control:
         loop_var: item
-
 
     - name: Generate thin pool configuration files
       template:
         src: "/tmp/thinpool/{{ item.vm_type }}_thin_pool_volume.cfg.j2"
         dest: "/usr/local/etc/vm_configs/{{ vm_name }}/{{ item.vm_type }}_thin_pool_volume.cfg"
       become: true
-      loop: "{{ vm_partition_list }}"
+      loop: "{{ vm_partition }}"
       loop_control:
         loop_var: item
 
