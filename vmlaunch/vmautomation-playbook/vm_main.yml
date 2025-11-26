@@ -17,28 +17,27 @@
       ansible.builtin.debug:
         msg: "{{ 'Setup Type is On-Prem' if effective_setup == '0' else 'Setup Type is Wavelite' }}"
     
-#    - name: Check if VM is present
-#      ansible.builtin.include_tasks: files/check_vmpresent.yml
-#      loop: "{{ vms }}"
-#      loop_control:
-#        loop_var: item
-#    
+    - name: Check if VM is present
+      ansible.builtin.include_tasks: files/check_vmpresent.yml
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: item
+    
     - name: VM Creation Block
       block:
-#        - name: Generate configuration files
-#          ansible.builtin.include_role:
-#            name: create_cfg
-#          vars:
-#            vm_type: "{{ item.vm_type }}"
-#            vm_name: "{{ item.name }}"
-#          loop: "{{ vms }}"
-#          loop_control:
-#            loop_var: item
-#          when: 
-#            - "'F5' not in item.vm_type"
-#            - "name not in already_present"
-#            - "vm_to_rerun is not defined or vm_to_rerun == name"
-
+        - name: Generate configuration files
+          ansible.builtin.include_role:
+            name: create_cfg
+          vars:
+            vm_type: "{{ item.vm_type }}"
+            vm_name: "{{ item.name }}"
+          loop: "{{ vms }}"
+          loop_control:
+            loop_var: item
+          when: 
+            - "'F5' not in item.vm_type"
+            - "name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == name"
         - name: Generate INI files
           ansible.builtin.include_role:
             name: create_ini
