@@ -48,7 +48,7 @@
           loop_control:
             loop_var: item
           when:
-            - "name not in already_present"
+            - "item.name not in already_present"
             - "vm_to_rerun is not defined or vm_to_rerun == item.name"
     
         - name: Launch VMs
@@ -61,7 +61,7 @@
           loop_control:
             loop_var: item
           when:
-            - "name not in already_present"
+            - "item.name not in already_present"
             - "vm_to_rerun is not defined or vm_to_rerun == item.name"
 
         - name: Display already present VMs
