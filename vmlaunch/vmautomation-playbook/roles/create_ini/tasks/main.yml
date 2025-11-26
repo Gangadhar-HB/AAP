@@ -49,7 +49,7 @@
       debug:
         msg:
           - "=== F5 Configuration Summary ==="
-          - "VM Name: {{ vm_name }}"
+          - "VM Name: {{ name }}"
           - "F5 Config Section: {{ 'Present' if F5_config_exists else 'Not defined (using defaults)' }}"
           - "Hostname: {{ F5_hostname }}"
           - "Management IP: {{ F5_mgmtIP }}"
@@ -84,7 +84,7 @@
     - name: generate cloudinit file for {{ vm_type }}
       template:
           src: "user_data.j2"
-          dest: "/declarations/user_data_{{ vm_name }}"
+          dest: "/declarations/user_data_{{ name }}"
       become: true
       become_user: root
     
@@ -92,57 +92,57 @@
       command: "{{ commands }}"
       loop:
        - "chmod 755 /tmp/tmos_configdrive_builder.py"
-       - "python3 /tmp/tmos_configdrive_builder.py {{ vm_name }}"
+       - "python3 /tmp/tmos_configdrive_builder.py {{ name }}"
       loop_control:
         loop_var: commands
       become: true
       become_user: root
     - set_fact:
-       vm_name: "{{ vm_name }}"
-       vm_ram: "{{ item.vm_resource.ram }}"
-       vm_cpu: "{{ item.vm_resource.vcpu }}"
-       vm_disk_size: "{{ item.vm_resource.datadisksize }}"
+       name: "{{ name }}"
+       vm_ram: "{{ item.vm_resource.RAM }}"
+       vm_cpu: "{{ item.vm_resource.VCPU }}"
+       vm_disk_size: "{{ item.vm_resource.DataDiskSize }}"
        vm_osdisk_size: "{{ item.os_disk  | default('10') }}"
   
   
     - name: Create directory for F5 VM config
       file:
-       path: "/usr/local/etc/vm_configs/{{ vm_name }}"
+       path: "/usr/local/etc/vm_configs/{{ name }}"
        state: directory
        owner: root
        group: root
        mode: '0755'
       become: true
  
-    - name: Generate INI for "{{ vm_name }}" 
+    - name: Generate INI for "{{ name }}" 
       template:
         src: "F5.ini.j2"
-        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
+        dest: "/usr/local/etc/vm_configs/{{name}}/{{ name }}.ini"
       become: true
       become_user: root
   
-    - name: Generate INI for "{{ vm_name }}"
+    - name: Generate INI for "{{ name }}"
       template:
         src: "F5.ini.j2"
-        dest: "/usr/local/etc/{{ vm_name }}.ini"
+        dest: "/usr/local/etc/{{ name }}.ini"
       become: true
       become_user: root
   
-  #when: "'F5' in vm_type and vm_name not in vm_present.stdout"
+  #when: "'F5' in vm_type and name not in vm_present.stdout"
   when: "'F5' in vm_type"
 
 - block:
   - set_fact:
-      vm_name: "{{ vm_name }}"
-      vm_ram: "{{ item.vm_resource.ram }}"
-      vm_cpu: "{{ item.vm_resource.vcpu }}"
-      vm_disk_size: "{{ item.vm_resource.datadisksize }}"
+      name: "{{ name }}"
+      vm_ram: "{{ item.vm_resource.RAM }}"
+      vm_cpu: "{{ item.vm_resource.VCPU }}"
+      vm_disk_size: "{{ item.vm_resource.DataDiskSize }}"
       vm_osdisk_size: "{{ item.os_disk  | default('10') }}"
   
   
   - name: Create directory for VM config
     file:
-     path: "/usr/local/etc/vm_configs/{{ vm_name }}"
+     path: "/usr/local/etc/vm_configs/{{ name }}"
      state: directory
      owner: root
      group: root
@@ -151,34 +151,34 @@
   
   - block: 
 
-    - name: Generate INI for On-prem "{{ vm_name }}" 
+    - name: Generate INI for On-prem "{{ name }}" 
       template:
         src: "vm.ini.j2"
-        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
+        dest: "/usr/local/etc/vm_configs/{{name}}/{{ name }}.ini"
       become: true
       become_user: root
     
-    - name: Generate INI for On-prem  "{{ vm_name }}"
+    - name: Generate INI for On-prem  "{{ name }}"
       template:
         src: "vm.ini.j2"
-        dest: "/usr/local/etc/{{ vm_name }}.ini"
+        dest: "/usr/local/etc/{{ name }}.ini"
       become: true
       become_user: root
 
     when: effective_setup == "0"
   - block: 
 
-    - name: Generate INI for wavelite "{{ vm_name }}" 
+    - name: Generate INI for wavelite "{{ name }}" 
       template:
         src: "wavelite_vm.ini.j2"
-        dest: "/usr/local/etc/vm_configs/{{vm_name}}/{{ vm_name }}.ini"
+        dest: "/usr/local/etc/vm_configs/{{name}}/{{ name }}.ini"
       become: true
       become_user: root
     
-    - name: Generate INI for wavelite  "{{ vm_name }}"
+    - name: Generate INI for wavelite  "{{ name }}"
       template:
         src: "wavelite_vm.ini.j2"
-        dest: "/usr/local/etc/{{ vm_name }}.ini"
+        dest: "/usr/local/etc/{{ name }}.ini"
       become: true
       become_user: root
 
