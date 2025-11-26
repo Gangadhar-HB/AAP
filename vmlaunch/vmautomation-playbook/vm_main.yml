@@ -93,8 +93,6 @@
       when:
         - "'F5' not in item.vm_type"
         - "item.name not in (failed_vms | default([]))"
-        - "(ansible_host) == inventory_hostname"
-
 
     - name: Fail if VMs failed to launch
       ansible.builtin.fail:
