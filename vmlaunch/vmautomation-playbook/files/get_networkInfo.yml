@@ -6,6 +6,9 @@
   set_fact:
     timezone: "{{ ansible_date_time.tz }}"
 
+- debug:
+    var: timezone
+
 - name: Number of VLANs from user input
   set_fact:
     no_vlan: "{{ item.networkInterface | length }}"
