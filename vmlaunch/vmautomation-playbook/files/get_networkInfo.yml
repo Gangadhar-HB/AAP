@@ -12,15 +12,15 @@
 
 - name: Set default mac addresses
   set_fact:
-    default_mac_vir: "{{ lookup('community.general.random_mac', '52:54:00') }}"
-    default_mac_oambr: "{{ lookup('community.general.random_mac', '52:54:00') }}"
+    default_mac_vir: "{{ lookup('community.general.macaddr', '52:54:00') }}"
+    default_mac_oambr: "{{ lookup('community.general.macaddr', '52:54:00') }}"
 
 - debug:
     msg: "{{ default_mac_vir }} ----- {{ default_mac_oambr }}"
 
 - name: Generate MAC for each interface
   set_fact:
-    macList: "{{ macList | default([]) + [ lookup('community.general.random_mac', '52:54:00') ] }}"
+    macList: "{{ macList | default([]) + [ lookup('community.general.macaddr', '52:54:00') ] }}"
   loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: vlan
@@ -100,15 +100,15 @@
 
 - name: mac address for default virb0 and oambr-ext
   set_fact:
-    default_mac_vir: "{{ '52:54:00' | community.general.random_mac  }}"
-    default_mac_oambr: "{{ '52:54:00' | community.general.random_mac  }}"
+    default_mac_vir: "{{ '52:54:00' | community.general.macaddr  }}"
+    default_mac_oambr: "{{ '52:54:00' | community.general.macaddr  }}"
 
 
 - debug:
    msg: "{{ default_mac_vir }}-----{{ default_mac_oambr }}"
 - name: mac address Hexadecimal digit
   set_fact:
-    mac: "{{ '52:54:00' | community.general.random_mac  }}"
+    mac: "{{ '52:54:00' | community.general.macaddr  }}"
   register: macs
   loop: "{{ item.networkInterface }}"
   loop_control:
