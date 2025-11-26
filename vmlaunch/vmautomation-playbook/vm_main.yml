@@ -36,8 +36,9 @@
             loop_var: item
           when: 
             - "'F5' not in item.vm_type"
-            - "name not in already_present"
-            - "vm_to_rerun is not defined or vm_to_rerun == name"
+            - "item.name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == item.name"
+
         - name: Generate INI files
           ansible.builtin.include_role:
             name: create_ini
@@ -48,9 +49,9 @@
           loop_control:
             loop_var: item
           when:
-            - "name not in already_present"
-            - "vm_to_rerun is not defined or vm_to_rerun == name"
-    
+            - "item.name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == item.name"
+
         - name: Launch VMs
           ansible.builtin.include_role:
             name: create_vm
@@ -61,8 +62,8 @@
           loop_control:
             loop_var: item
           when:
-            - "name not in already_present"
-            - "vm_to_rerun is not defined or vm_to_rerun == name"
+            - "item.name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == item.name"
 
         - name: Display already present VMs
           ansible.builtin.debug:
