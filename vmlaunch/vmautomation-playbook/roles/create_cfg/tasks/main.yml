@@ -64,7 +64,10 @@
          user_data_action_1: "{{ user_data_action_1_wavelite }}"
       
       when: effective_setup == "1"
-    
+
+    - debug:
+        var: user_data_action_1
+
     - name: Create dynamic Jinja2 template for each VM
       copy:
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
