@@ -8,7 +8,7 @@
 
 - name: Number of VLANs from user input
   set_fact:
-    no_vlan: "{{ networkInterface | length }}"
+    no_vlan: "{{ item.networkInterface | length }}"
 
 - name: Set default mac addresses
   set_fact:
@@ -21,7 +21,7 @@
 - name: Generate MAC for each interface
   set_fact:
     macList: "{{ macList | default([]) + [ lookup('community.general.random_mac', '52:54:00') ] }}"
-  loop: "{{ net_ifaces }}"
+  loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: vlan
 
@@ -36,7 +36,7 @@
 - name: Build main bridge list
   set_fact:
     bridgeList: "{{ bridgeList + [Br.bridge] }}"
-  loop: "{{ net_ifaces }}"
+  loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: Br
 
@@ -46,7 +46,7 @@
 - name: Build alias bridge list
   set_fact:
     AliasBridgeList: "{{ AliasBridgeList + [Abr.alias_bridge] }}"
-  loop: "{{ net_ifaces }}"
+  loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: Abr
   when: Abr.alias_bridge is defined and Abr.alias_bridge
@@ -74,7 +74,7 @@
 - name: Build IP list
   set_fact:
     IpList: "{{ IpList + [iface.ipaddress] }}"
-  loop: "{{ net_ifaces }}"
+  loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: iface
   when: iface.ipaddress is defined
@@ -82,7 +82,7 @@
 - name: Build gateway map
   set_fact:
     gwList: "{{ gwList | combine({ gw.ipaddress: gw.gw }) }}"
-  loop: "{{ net_ifaces }}"
+  loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: gw
   when: gw.ipaddress is defined
