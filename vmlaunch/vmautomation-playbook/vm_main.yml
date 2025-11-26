@@ -29,8 +29,8 @@
           ansible.builtin.include_role:
             name: create_cfg
           vars:
-            vm_type: "{{ vm_type }}"
-            vm_name: "{{ vm_to_rerun | default(name) }}"
+            vm_type: "{{ item.vm_type }}"
+            vm_name: "{{ item.name }}"
           loop: "{{ vms }}"
           loop_control:
             loop_var: item
