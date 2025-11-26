@@ -18,13 +18,13 @@
     kpool_info: >-
       {{
         (
-          lvdata
-          | default({})
-        ).get('report', [])
-        | first
+          lvdata.report
+          | default([])
+        )[0]
         | default({})
-        .get('lv', [])
-        | selectattr('lv_name', 'equalto', 'kpool')
+        .lv
+        | default([])
+        | selectattr('lv_name','equalto','kpool')
         | list
       }}
     hasKpool: "{{ kpool_info | length > 0 }}"
