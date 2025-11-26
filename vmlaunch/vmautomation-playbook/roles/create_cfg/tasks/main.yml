@@ -94,7 +94,7 @@
         user_data_action: >-
           {{ user_data_action | default({}) |
              combine({
-               item.item.vm_type: (item.content | b64decode)
+               item.vm.vm_type: (item.content | b64decode)
              }) }}
       loop: "{{ thin_template_raw.results }}"
       loop_control:
