@@ -10,10 +10,15 @@
   set_fact:
     no_vlan: "{{ item.networkInterface | length }}"
 
-- name: Set default mac addresses
+#- name: Set default mac addresses
+#  set_fact:
+#    default_mac_vir: "{{ lookup('community.general.random_mac', '52:54:00') }}"
+#    default_mac_oambr: "{{ lookup('community.general.random_mac', '52:54:00') }}"
+
+- name: mac address for default virb0 and oambr-ext
   set_fact:
-    default_mac_vir: "{{ lookup('community.general.random_mac', '52:54:00') }}"
-    default_mac_oambr: "{{ lookup('community.general.random_mac', '52:54:00') }}"
+    default_mac_vir: "{{ '52:54:00' | community.general.random_mac  }}"
+    default_mac_oambr: "{{ '52:54:00' | community.general.random_mac  }}"
 
 - debug:
     msg: "{{ default_mac_vir }} ----- {{ default_mac_oambr }}"
