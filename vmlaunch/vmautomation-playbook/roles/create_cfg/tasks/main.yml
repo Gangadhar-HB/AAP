@@ -106,14 +106,7 @@
         loop_var: file
       become: true
 
-
-    - name: Create cloud-init ISO image
-      community.general.iso_create:
-        dest: "/cloudinitiso/{{ item.name }}_ciiso.iso"
-        files:
-          user-data: "/cloudinitiso/{{ item.name }}/user-data"
-          meta-data: "/cloudinitiso/{{ item.name }}/meta-data"
-        volid: cidata
-        joliet: true
-        rock_ridge: true
+    - name: Run the VM tmos confg-2 iso
+      shell: "cd /cloudinitiso/{{ vm_name }} ; genisoimage -output {{ vm_name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
       become: true
+      become_user: root
