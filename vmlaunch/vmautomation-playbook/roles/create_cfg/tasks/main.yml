@@ -65,19 +65,10 @@
       
       when: effective_setup == "1"
     
-    - name: Ensure dynamic template temp directory exists
-      file:
-        path: "/tmp/thinpool"
-        state: directory
-        mode: '0755'
-    
     - name: Create dynamic Jinja2 template for each VM
       copy:
-        dest: "/tmp/thinpool/{{ vm.name }}_thin_pool_volume.cfg.j2"
+        dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
         content: |
-          # Auto-generated Thin Pool Config
-          # VM Name: {{ vm.name }}
-    
           {% for key, value in vm.vm_partition.items() %}
           {{ key }}={{ value }}
           {% endfor %}
@@ -85,24 +76,15 @@
       loop_control:
         loop_var: vm
 
-    - name: Generate thin pool configuration files
-      template:
-        src: "/tmp/thinpool/{{ vm.name }}_thin_pool_volume.cfg.j2"
-        dest: "/usr/local/etc/vm_configs/{{ vm.name }}/thin_pool_volume.cfg"
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: vm
-      become: true
-
     - name: Get the content of cfg file
-      shell: "cat /usr/local/etc/vm_configs/{{ vm.name }}/thin_pool_volume.cfg"
+      shell: "cat /usr/local/etc/{{ item.vm_type }}/thin_pool_volume.cfg"
       become: true
       become_user: root
       register: user_data_action
 
     - name: Create directory for ISO
       file:
-         path: "/cloudinitiso/{{ vm_name }}"
+         path: "/cloudinitiso/{{ item.name }}"
          state: directory
          owner: root
          group: root
