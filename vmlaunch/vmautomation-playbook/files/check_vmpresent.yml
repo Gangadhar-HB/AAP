@@ -4,9 +4,6 @@
   community.libvirt.virt:
     command: list_vms
   register: vm_list
-  #delegate_to: "{{ ansible_host }}"
-  #vars:
-  #  ansible_python_interpreter: /usr/bin/python3
 
 - name: Add VM to already_present list if it exists
   ansible.builtin.set_fact:
