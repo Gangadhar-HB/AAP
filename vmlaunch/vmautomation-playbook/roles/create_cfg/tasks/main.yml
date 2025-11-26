@@ -78,12 +78,7 @@
       loop_control:
         loop_var: vm
     
-    
-    # -------------------------------------------------------
-    # Read each generated template back and store content per VM
-    # -------------------------------------------------------
-    
-    - name: Read thin pool cfg template
+    - name: Read thin pool cfg templates
       ansible.builtin.slurp:
         src: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
       loop: "{{ vms }}"
@@ -91,16 +86,16 @@
         loop_var: vm
       register: thin_template_raw
     
-    
     - name: Store thin pool content per VM
       ansible.builtin.set_fact:
         user_data_action: >-
           {{ user_data_action | default({}) |
-             combine({ vm.vm_type: (item.content | b64decode) }) }}
+             combine({
+               item.item.vm_type: (item.content | b64decode)
+             }) }}
       loop: "{{ thin_template_raw.results }}"
       loop_control:
         loop_var: item
-
 
     - name: Create directory for ISO
       ansible.builtin.file:
