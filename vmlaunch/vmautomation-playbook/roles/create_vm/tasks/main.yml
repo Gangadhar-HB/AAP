@@ -34,7 +34,11 @@
           community.libvirt.virt:
             name: "{{ vm_name }}"
             state: running
-            timeout: 600
+          register: vm_status
+          until: vm_status is succeeded
+          retries: 20
+          delay: 30
+
 
         - name: Register VM state
           set_fact:
