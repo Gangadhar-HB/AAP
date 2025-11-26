@@ -12,15 +12,15 @@
 
 - name: Set default mac addresses
   set_fact:
-    default_mac_vir: "{{ lookup('community.general.macaddr', '52:54:00') }}"
-    default_mac_oambr: "{{ lookup('community.general.macaddr', '52:54:00') }}"
+    default_mac_vir: "{{ '52:54:00' | community.general.random_mac  }}"
+    default_mac_oambr: "{{ '52:54:00' | community.general.random_mac }}"
 
 - debug:
     msg: "{{ default_mac_vir }} ----- {{ default_mac_oambr }}"
 
 - name: Generate MAC for each interface
   set_fact:
-    macList: "{{ macList | default([]) + [ lookup('community.general.macaddr', '52:54:00') ] }}"
+    macList: "{{ macList | default([]) + [ '52:54:00' | community.general.random_mac ] }}"
   loop: "{{ item.networkInterface }}"
   loop_control:
     loop_var: vlan
