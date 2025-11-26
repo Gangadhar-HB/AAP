@@ -1,72 +1,73 @@
 ---
 - block:
+
     - name: Include network details
       include_tasks: files/get_networkInfo.yml
-      
+
     - name: Create directory for VM config
-      file:
-         path: "/usr/local/etc/vm_configs/{{ vm_name }}"
-         state: directory
-         owner: root
-         group: root
-         mode: '0755'
+      ansible.builtin.file:
+        path: "/usr/local/etc/vm_configs/{{ vm_name }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
       become: true
 
-
     - name: Get the partition size from input
-      set_fact:
-          couchdata: "{{ item.vm_partition.couchdata_size | default(omit) }}"
-          couchindex: "{{ item.vm_partition.couchindex_size | default(omit) }}"
-          DGdata: "{{ item.vm_partition.DGdata_size | default(omit) }}"
-          DGlogs: "{{ item.vm_partition.DGlogs_size | default(omit) }}"
-          Database: "{{ item.vm_partition.Database_size | default(omit) }}"
-          GridGainData: "{{ item.vm_partition.GridGainData_size | default(omit) }}"
-          GridGainDrFs: "{{ item.vm_partition.GridGainDrFs_size | default(omit) }}"
-          GridGainWal: "{{ item.vm_partition.GridGainWal_size | default(omit) }}"
-          PostgresData: "{{ item.vm_partition.PostgresData_size | default(omit) }}"
-          PostgresWal: "{{ item.vm_partition.PostgresWal_size | default(omit) }}"
-          Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
-        
-    - block:
-      - name: create On-prem network file 
-        template:
-          src: "roles/create_cfg/templates/network_config.ini.j2"
-          dest: "/tmp/network_{{ vm_name }}.ini"
-        become: true
-        become_user: root
+      ansible.builtin.set_fact:
+        couchdata: "{{ item.vm_partition.couchdata_size | default(omit) }}"
+        couchindex: "{{ item.vm_partition.couchindex_size | default(omit) }}"
+        DGdata: "{{ item.vm_partition.DGdata_size | default(omit) }}"
+        DGlogs: "{{ item.vm_partition.DGlogs_size | default(omit) }}"
+        Database: "{{ item.vm_partition.Database_size | default(omit) }}"
+        GridGainData: "{{ item.vm_partition.GridGainData_size | default(omit) }}"
+        GridGainDrFs: "{{ item.vm_partition.GridGainDrFs_size | default(omit) }}"
+        GridGainWal: "{{ item.vm_partition.GridGainWal_size | default(omit) }}"
+        PostgresData: "{{ item.vm_partition.PostgresData_size | default(omit) }}"
+        PostgresWal: "{{ item.vm_partition.PostgresWal_size | default(omit) }}"
+        Recordings: "{{ item.vm_partition.Recordings_size | default(omit) }}"
 
-      - name: Get the content of On-prem cfg file 
-        shell: "cat /tmp/network_{{ item.name }}.ini"
-        become: true
-        become_user: root
-        register: user_data_action_1_onprem
-      
-      - set_fact:
-         user_data_action_1: "{{ user_data_action_1_onprem }}"
- 
-      when: effective_setup == "0" 
-    
-    - block:
-      - name: create wavelite network file 
-        template:
-          src: "roles/create_cfg/templates/wavelite_network_config.ini.j2"
-          dest: "/tmp/wavelite_network_{{ vm_name }}.ini"
-        become: true
-        become_user: root
 
-      - name: Get the content of wavelite cfg file 
-        shell: "cat /tmp/wavelite_network_{{ item.name }}.ini"
-        become: true
-        become_user: root
-        register: user_data_action_1_wavelite
-      
-      - set_fact:
-         user_data_action_1: "{{ user_data_action_1_wavelite }}"
-      
+    - block:
+
+        - name: Create On-prem network file (template)
+          ansible.builtin.template:
+            src: "roles/create_cfg/templates/network_config.ini.j2"
+            dest: "/tmp/network_{{ vm_name }}.ini"
+          become: true
+
+        - name: Read network config content (native replacement for 'cat')
+          ansible.builtin.slurp:
+            src: "/tmp/network_{{ vm_name }}.ini"
+          register: netfile
+
+        - name: Store network cfg for cloud-init
+          ansible.builtin.set_fact:
+            user_data_action_1: "{{ netfile.content | b64decode }}"
+
+      when: effective_setup == "0"
+
+    - block:
+
+        - name: Create wavelite network file (template)
+          ansible.builtin.template:
+            src: "roles/create_cfg/templates/wavelite_network_config.ini.j2"
+            dest: "/tmp/wavelite_network_{{ vm_name }}.ini"
+          become: true
+
+        - name: Read wavelite cfg content
+          ansible.builtin.slurp:
+            src: "/tmp/wavelite_network_{{ vm_name }}.ini"
+          register: wvfile
+
+        - name: Store wavelite cfg for cloud-init
+          ansible.builtin.set_fact:
+            user_data_action_1: "{{ wvfile.content | b64decode }}"
+
       when: effective_setup == "1"
-    
-    - name: Create dynamic Jinja2 template for each VM
-      copy:
+
+    - name: Create dynamic Jinja2 templates
+      ansible.builtin.copy:
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
         content: |
           {% for key, value in vm.vm_partition.items() %}
@@ -76,34 +77,42 @@
       loop_control:
         loop_var: vm
 
-    - name: Get the content of cfg file
-      shell: "cat /usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg.j2"
-      become: true
-      become_user: root
-      register: user_data_action
+    - name: Read thin pool cfg template
+      ansible.builtin.slurp:
+        src: "/usr/local/etc/{{ item.vm_type }}_thin_pool_volume.cfg.j2"
+      register: thin_template_raw
+
+    - name: Store thin pool content
+      ansible.builtin.set_fact:
+        user_data_action: "{{ thin_template_raw.content | b64decode }}"
 
     - name: Create directory for ISO
-      file:
-         path: "/cloudinitiso/{{ item.name }}"
-         state: directory
-         owner: root
-         group: root
-         mode: '0755'
+      ansible.builtin.file:
+        path: "/cloudinitiso/{{ item.name }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
       become: true
 
-    - name: generate cloudinit file for {{ item.name}}
-      template:
-          src: "{{ file }}.j2"
-          dest: "/cloudinitiso/{{ item.name }}/{{ file }}"
-      become: true
-      become_user: root
+    - name: Generate cloudinit file for {{ item.name }}
+      ansible.builtin.template:
+        src: "{{ file }}.j2"
+        dest: "/cloudinitiso/{{ item.name }}/{{ file }}"
       loop:
         - user-data
         - meta-data
       loop_control:
         loop_var: file
-
-    - name: Run the VM tmos confg-2 iso
-      shell: "cd /cloudinitiso/{{ item.name }} ; genisoimage -output {{ item.name }}_ciiso.iso -volid cidata -joliet -rock user-data meta-data"
       become: true
-      become_user: root
+
+    - name: Create cloud-init ISO image (native replacement)
+      community.general.iso_create:
+        dest: "/cloudinitiso/{{ item.name }}/{{ item.name }}_ciiso.iso"
+        files:
+          user-data: "/cloudinitiso/{{ item.name }}/user-data"
+          meta-data: "/cloudinitiso/{{ item.name }}/meta-data"
+        volid: cidata
+        joliet: true
+        rock_ridge: true
+      become: true
