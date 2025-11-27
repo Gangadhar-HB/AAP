@@ -10,11 +10,10 @@
   ansible.builtin.shell: "ls -lrt /root/logs/"
   register: logs_list
   changed_when: false
-  delegate_to: "{{ vm_ip }}"
+  delegate_to: "{{ inventory_hostname }}"
 
 - debug:
     var: logs_list
-
 
 - name: Find log files on each VM
   ansible.builtin.find:
