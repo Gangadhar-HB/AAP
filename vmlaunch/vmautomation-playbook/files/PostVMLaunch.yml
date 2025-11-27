@@ -39,6 +39,7 @@
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
+  become: yes
 
 - debug:
     msg: "Found scripts: {{ found_scripts }}"
