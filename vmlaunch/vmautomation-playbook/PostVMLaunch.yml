@@ -39,6 +39,7 @@
     ansible.builtin.shell: "ls -lrt /root/logs/"
     register: logs_list
     changed_when: false
+    delegate_to: localhost
   
   - debug:
       var: logs_list
