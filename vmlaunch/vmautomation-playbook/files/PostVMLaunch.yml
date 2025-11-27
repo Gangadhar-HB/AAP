@@ -1,91 +1,146 @@
-- name: "Post configuration for {{ vm_name }}"
-  hosts: "{{ vm_ips[vm_name] }}"
-  gather_facts: no
-  remote_user: "{{ user }}"
-  vars:
-    ansible_password: "{{ password }}"
+- name: Debug VM info
+  debug:
+    msg: "Post config running for {{ vm_name }} at {{ vm_ip }} (type: {{ vm_type }})"
 
-  tasks:
-    # ------------------------------------------------------
-    # FIND FILES ON THIS VM (NO LOOP, NO DELEGATE_TO NEEDED)
-    # ------------------------------------------------------
-    - name: Find log files on this VM
-      ansible.builtin.find:
-        paths: /root/logs/
-        patterns: "vm_config_thin_vol.sh.error"
-        recurse: yes
-      register: found_scripts
+- name: Find log files on VM
+  ansible.builtin.find:
+    paths: /root/logs/vm_config_thin_vol.sh/
+    patterns: "*.error"
+    recurse: yes
+  delegate_to: "{{ vm_ip }}"
+  register: vm_logs
 
-    - debug:
-        msg: "Found files: {{ found_scripts.files }}"
+#- name: Initialize vm_ips dictionary
+#  ansible.builtin.set_fact:
+#    vm_ips: {}
 
-    # ----------------------------
-    # SLURP EACH FOUND FILE
-    # ----------------------------
-    - name: Read log files
-      ansible.builtin.slurp:
-        src: "{{ item.path }}"
-      loop: "{{ found_scripts.files }}"
-      loop_control:
-        loop_var: fileitem
-      register: slurped_logs
-      ignore_errors: yes
-
-    # ----------------------------
-    # FAIL IF ANY ERROR FOUND
-    # ----------------------------
-    - name: Fail if log contains ERROR
-      ansible.builtin.fail:
-        msg: |
-          ERROR found in {{ fileitem.path }} on {{ inventory_hostname }}:
-          {{ filecontent }}
-      loop: "{{ slurped_logs.results }}"
-      loop_control:
-        loop_var: logitem
-      vars:
-        fileitem: "{{ logitem.item }}"
-        filecontent: "{{ logitem.content | b64decode }}"
-      when:
-        - logitem is defined
-        - logitem.content is defined
-        - (logitem.content | b64decode) is search("ERROR")
-
-
-    # ------------------------------------------------------
-    # COSIGN BLOCK (Runs ONCE per VM)
-    # ------------------------------------------------------
-    - block:
-        - name: Import cosign_upg.yml
-          ansible.builtin.import_tasks: cosign_upg.yml
-          become: yes
-
-        - name: Copy cosign_failed_vms
-          ansible.builtin.copy:
-            src: "{{ cosign_failed_vms }}"
-            dest: "/DGdata/Software/{{ cosign_failed_vms | basename }}"
-            mode: '0644'
-          become: yes
-
-      when: repo_url and cosign_pub_key_file
-
-    - name: Skipping cosign
-      ansible.builtin.debug:
-        msg: "Skipping cosign verification as repo_url or cosign_pub_key_file not defined"
-      when: not (repo_url and cosign_pub_key_file)
-
-    # ------------------------------------------------------
-    # NSSWITCH / RESOLV.CONF UPDATE ON THE VM
-    # ------------------------------------------------------
-    - name: Ensure dns is appended to hosts line
-      ansible.builtin.lineinfile:
-        path: /etc/nsswitch.conf
-        regexp: '^hosts:'
-        line: "hosts:      files myhostname dns"
-      become: yes
-
-    - name: Ensure nameserver entry exists
-      ansible.builtin.lineinfile:
-        path: /etc/resolv.conf
-        line: "nameserver 8.8.8.8"
-        state: present
-      become: yes
+#- name: Fetch IP address from the VLAN having gateway
+#  ansible.builtin.set_fact:
+#    ip_with_gw: "{{ item.ipaddress.split('/')[0] }}"
+#  loop: "{{ item.networkInterface }}"
+#  when: item.gw is defined and item.gw != ''
+#
+#- name: Display extracted IP address
+#  ansible.builtin.debug:
+#    msg: "{{ ip_with_gw }}"
+#
+#- name: Build vm_ips dictionary from IP results
+#  ansible.builtin.set_fact:
+#    vm_ips: "{{ vm_ips | combine({ vm_name: ip_with_gw }) }}"
+#
+#- name: Wait for SSH (port 22) on all VM primary IPs
+#  ansible.builtin.wait_for:
+#    host: "{{ item.value }}"
+#    port: 22
+#    timeout: 300
+#    state: started
+#  loop: "{{ vm_ips | dict2items }}"
+#  loop_control:
+#    label: "{{ item.key }} ({{ item.value }})"
+#
+#- name: Find log files on each VM
+#  ansible.builtin.find:
+#    paths: /root/logs/vm_config_thin_vol.sh/
+#    patterns: "*.error"
+#    recurse: yes
+#  delegate_to: "{{ vm.value }}"
+#  delegate_facts: false
+#  vars:
+#    ansible_user: autoinstall
+#    ansible_port: 22
+#  register: found_scripts
+#  loop: "{{ vm_ips | dict2items }}"
+#  loop_control:
+#    loop_var: vm
+#    label: "{{ vm.key }} ({{ vm.value }})"
+#
+#- debug:
+#    msg: "Found scripts: {{ found_scripts }}"
+#
+## -----------------------------------------
+## READ FILES USING SLURP + CHECK FOR ERROR
+## -----------------------------------------
+#
+#- name: Read log files
+#  ansible.builtin.slurp:
+#    src: "{{ find_item.files[0].path }}"
+#  delegate_to: "{{ vm_item.value }}"
+#  register: slurped_logs
+#  ignore_errors: true
+#  loop: "{{ vm_ips | dict2items | zip(found_scripts.results) }}"
+#  loop_control:
+#    loop_var: zipped
+#    label: "{{ zipped.0.key }}"
+#  vars:
+#    vm_item: "{{ zipped.0 }}"
+#    find_item: "{{ zipped.1 }}"
+#  when: find_item.files | length > 0
+#
+#
+#
+#- name: Fail if log contains ERROR
+#  ansible.builtin.fail:
+#    msg: |
+#      Found ERROR(s) in logs on {{ vm_item.key }} ({{ vm_item.value }}):
+#      {{ slurp_item.content | b64decode }}
+#  loop: "{{ vm_ips | dict2items | zip(slurped_logs.results) }}"
+#  loop_control:
+#    loop_var: zipped
+#    label: "{{ zipped.0.key }}"
+#  vars:
+#    vm_item: "{{ zipped.0 }}"
+#    slurp_item: "{{ zipped.1 }}"
+#  when:
+#    - slurp_item is defined
+#    - slurp_item.content is defined
+#    - slurp_item.content | b64decode is search('ERROR')
+#
+#
+#
+## -----------------------------------------
+## COSIGN BLOCK (UNCHANGED EXCEPT SHELL REMOVED)
+## -----------------------------------------
+#
+#- block:
+#    - name: Import cosign_upg.yml
+#      ansible.builtin.import_tasks: cosign_upg.yml
+#      delegate_to: "{{ ip_with_gw }}"
+#      become: yes
+#
+#    - name: Copy cosign_failed_vms to VMs
+#      ansible.builtin.copy:
+#        src: "{{ cosign_failed_vms }}"
+#        dest: "/DGdata/Software/{{ cosign_failed_vms | basename }}"
+#        mode: '0644'
+#      delegate_to: "{{ ip_with_gw }}"
+#      become: yes
+#  when: repo_url is defined and repo_url and cosign_pub_key_file is defined and cosign_pub_key_file
+#
+## -----------------------------------------
+## NOT APPLYING COSIGN
+## -----------------------------------------
+#
+#- name: Not applying cosign when repo_url or key not defined
+#  ansible.builtin.debug:
+#    msg: "Skipping cosign verification as repo_url or cosign_pub_key_file not defined"
+#  when: repo_url is not defined or not repo_url or cosign_pub_key_file is not defined or not cosign_pub_key_file
+#
+## -----------------------------------------
+## NSSWITCH + RESOLV.CONF FIX (NATIVE)
+## -----------------------------------------
+#
+#- name: Ensure dns is appended to hosts line in /etc/nsswitch.conf
+#  ansible.builtin.lineinfile:
+#    path: /etc/nsswitch.conf
+#    regexp: '^hosts:'
+#    line: "hosts:      files myhostname dns"
+#  delegate_to: "{{ ip_with_gw }}"
+#  become: yes
+#
+#- name: Ensure nameserver entry exists in resolv.conf
+#  ansible.builtin.lineinfile:
+#    path: /etc/resolv.conf
+#    line: "nameserver 8.8.8.8"
+#    state: present
+#  delegate_to: "{{ ip_with_gw }}"
+#  become: yes

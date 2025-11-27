@@ -78,19 +78,35 @@
       run_once: true
       when: successful_vms | length > 0
 
+    - name: Build dynamic inventory group for VMs
+      hosts: localhost
+      gather_facts: no
+      tasks:
+      - name: Add each VM to dynamic group
+        ansible.builtin.add_host:
+          name: "{{ item.interfaces[0].ipaddress }}"
+          groups: vm_targets
+          vm_name: "{{ item.name }}"
+          vm_type: "{{ item.vm_type }}"
+        loop: "{{ vms }}"
+        when:
+          - "'F5' not in item.vm_type"
+          - "item.name not in (failed_vms | default([]))"
+
+
     - name: Post VM configuration
       ansible.builtin.include_tasks: files/PostVMLaunch.yml
       loop: "{{ vms }}"
       loop_control:
-        loop_var: item
+        loop_var: vm
+        label: "{{ vm.name }}"
       vars:
-        vm_name: "{{ item.name }}"
-        vm_type: "{{ item.vm_type }}"
-        ansible_user: "{{ user }}"
-        ansible_password: "{{ password }}"
+        vm_name: "{{ vm.name }}"
+        vm_type: "{{ vm.vm_type }}"
+        vm_ip: "{{ vm_ips[vm.name] }}"
       when:
-        - "'F5' not in item.vm_type"
-        - "item.name not in (failed_vms | default([]))"
+        - "'F5' not in vm.vm_type"
+        - "vm.name not in (failed_vms | default([]))"
 
     - name: Fail if VMs failed to launch
       ansible.builtin.fail:
