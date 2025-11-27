@@ -91,7 +91,6 @@
   hosts: vm_ips
   gather_facts: no
   become: yes
-
   tasks:
 
     - name: Run PostVMLaunch per VM
@@ -103,6 +102,7 @@
       loop: "{{ vms }}"
       loop_control:
         loop_var: vm
+      delegate_to: "{{ vm_ip }}"
       when:
         - "'F5' not in vm.vm_type"
         - "vm.name not in (failed_vms | default([]))"
