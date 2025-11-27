@@ -51,6 +51,9 @@
 # FIND LOG FILES USING ANSIBLE FIND MODULE
 # -----------------------------------------
 
+- debug: 
+    msg: "{{ vm_item }}"
+
 - name: Find log files on each VM
   ansible.builtin.find:
     paths: /root/logs/vm_config_thin_vol.sh/
