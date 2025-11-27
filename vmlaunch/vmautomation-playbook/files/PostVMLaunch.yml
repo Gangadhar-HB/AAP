@@ -31,8 +31,8 @@
 
 - name: Find log files on each VM
   ansible.builtin.find:
-    paths: /root/logs/
-    patterns: "ls -lrt"
+    paths: /root/logs/vm_config_thin_vol.sh/
+    patterns: "scripts*"
     recurse: yes
   delegate_to: "{{ item.value }}"
   register: found_scripts
@@ -42,7 +42,7 @@
     label: "{{ item.key }} ({{ item.value }})"
 
 - debug:
-    msg: "Found scripts: {{ found_scripts.results }}"
+    msg: "Found scripts: {{ found_scripts }}"
 
 # -----------------------------------------
 # READ FILES USING SLURP + CHECK FOR ERROR
