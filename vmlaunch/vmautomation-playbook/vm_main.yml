@@ -83,11 +83,10 @@
       loop: "{{ vms }}"
       loop_control:
         loop_var: vm
-        label: "{{ vm.name }}"
       vars:
         vm_name: "{{ vm.name }}"
         vm_type: "{{ vm.vm_type }}"
-        vm_ip: "{{ vm_ips[vm.name] }}"
+        vm_ip: "{{ vm.ipaddress.split('/')[0] }}"
       when:
         - "'F5' not in vm.vm_type"
         - "vm.name not in (failed_vms | default([]))"
