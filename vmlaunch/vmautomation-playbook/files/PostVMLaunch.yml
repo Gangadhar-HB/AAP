@@ -26,32 +26,7 @@
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
 
-# -----------------------------------------
-# REMOVE OLD SSH KEY USING ANSIBLE MODULE
-# -----------------------------------------
-
-- name: Remove old SSH key for VM from known_hosts
-  ansible.builtin.known_hosts:
-    name: "{{ item.value }}"
-    state: absent
-  loop: "{{ vm_ips | dict2items }}"
-  loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
-
-- name: Add new SSH key using Ansible module
-  ansible.builtin.known_hosts:
-    name: "{{ item.value }}"
-    key: "{{ lookup('pipe', 'ssh-keyscan -H ' ~ item.value) }}"
-    state: present
-  loop: "{{ vm_ips | dict2items }}"
-  loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
-
-# -----------------------------------------
-# FIND LOG FILES USING ANSIBLE FIND MODULE
-# -----------------------------------------
-
-- debug: 
+- debug:
     msg: "{{ vm_ips | dict2items }}"
 
 - name: Find log files on each VM
@@ -59,13 +34,12 @@
     paths: /root/logs/vm_config_thin_vol.sh
     patterns: "script*"
     recurse: yes
-  delegate_to: "{{ vm_item.value }}"
+  delegate_to: "{{ item.value }}"
   register: found_scripts
   ignore_errors: true
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    loop_var: vm_item
-    label: "{{ vm_item.key }}"
+    label: "{{ item.key }} ({{ item.value }})"
 
 - debug:
     msg: "Found scripts: {{ found_scripts.results }}"
