@@ -26,8 +26,15 @@
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
 
-- debug:
-    msg: "{{ vm_ips | dict2items }}"
+- name: Check if script file exists on each VM
+  shell: sudo find /root/logs/vm_config_thin_vol.sh/ -type f -name "script*" 2>/dev/null
+  delegate_to: "{{ item.value }}"
+  register: found_scripts
+  ignore_errors: true
+  loop: "{{ vm_ips | dict2items }}"
+  loop_control:
+    label: "{{ item.key }} ({{ item.value }})"
+  when: item.key not in (failed_vms | default([]))
 
 - name: Find log files on each VM
   ansible.builtin.find:
@@ -38,7 +45,7 @@
   register: found_scripts
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
+    label: "{{ item.key }}"
   become: yes
 
 - debug:
