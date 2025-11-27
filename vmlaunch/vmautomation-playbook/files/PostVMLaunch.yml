@@ -67,6 +67,9 @@
     loop_var: vm_item
     label: "{{ vm_item.key }}"
 
+- debug:
+    msg: "Found scripts: {{ found_scripts.results }}"
+
 # -----------------------------------------
 # READ FILES USING SLURP + CHECK FOR ERROR
 # -----------------------------------------
