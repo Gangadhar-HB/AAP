@@ -81,6 +81,9 @@
     - item.1.files is defined
     - item.1.files | length > 0
 
+- debug:
+    msg: vm_log_slurp
+
 - name: Fail if log contains ERROR
   ansible.builtin.fail:
     msg: |
