@@ -56,14 +56,13 @@
     paths: /root/logs/vm_config_thin_vol.sh/
     patterns: "script*"
     recurse: yes
-  delegate_to: "{{ item.value }}"
+  delegate_to: "{{ vm_item.value }}"
   register: found_scripts
   ignore_errors: true
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    loop_var: vmitem
-    label: "{{ vmitem.key }}"
-
+    loop_var: vm_item
+    label: "{{ vm_item.key }}"
 
 # -----------------------------------------
 # READ FILES USING SLURP + CHECK FOR ERROR
@@ -71,35 +70,38 @@
 
 - name: Read log files
   ansible.builtin.slurp:
-    src: "{{ find_result.files[0].path }}"
+    src: "{{ find_item.files[0].path }}"
   delegate_to: "{{ vm_item.value }}"
-  register: vm_slurped_logs
-  loop: "{{ vm_ips | dict2items | zip(found_scripts.results) | list }}"
+  register: slurped_logs
+  ignore_errors: true
+  loop: "{{ vm_ips | dict2items | zip(found_scripts.results) }}"
   loop_control:
     loop_var: zipped
     label: "{{ zipped.0.key }}"
   vars:
     vm_item: "{{ zipped.0 }}"
-    find_result: "{{ zipped.1 }}"
-  when: find_result.files | length > 0
+    find_item: "{{ zipped.1 }}"
+  when: find_item.files | length > 0
+
 
 
 - name: Fail if log contains ERROR
   ansible.builtin.fail:
     msg: |
       Found ERROR(s) in logs on {{ vm_item.key }} ({{ vm_item.value }}):
-      {{ (slurp_result.content | b64decode).split('\n') }}
-  loop: "{{ vm_ips | dict2items | zip(vm_slurped_logs.results) | list }}"
+      {{ slurp_item.content | b64decode }}
+  loop: "{{ vm_ips | dict2items | zip(slurped_logs.results) }}"
   loop_control:
     loop_var: zipped
     label: "{{ zipped.0.key }}"
   vars:
     vm_item: "{{ zipped.0 }}"
-    slurp_result: "{{ zipped.1 }}"
+    slurp_item: "{{ zipped.1 }}"
   when:
-    - slurp_result is defined
-    - slurp_result.content is defined
-    - slurp_result.content | b64decode is search('ERROR')
+    - slurp_item is defined
+    - slurp_item.content is defined
+    - slurp_item.content | b64decode is search('ERROR')
+
 
 
 # -----------------------------------------
