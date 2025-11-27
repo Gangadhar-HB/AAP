@@ -24,17 +24,9 @@
   become: yes
   tasks:
 
-  - name: Add VMs to vm_ips group
-    ansible.builtin.add_host:
-      name: "{{ vm.networkInterface[0].ipaddress.split('/')[0] }}"
-      groups: vm_ips
-    loop: "{{ vms }}"
-    loop_control:
-      loop_var: vm
-    run_once: true
   - name: Wait for SSH access on VM
     ansible.builtin.wait_for:
-      host: "{{ vm_ip }}"
+      host: "{{ item }}"
       port: 22
       timeout: 300
     delegate_to: localhost
