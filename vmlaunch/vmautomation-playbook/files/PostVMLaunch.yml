@@ -13,7 +13,7 @@
 - name: Find log files on each VM
   ansible.builtin.find:
     paths: /root/logs/vm_config_thin_vol.sh/
-    patterns: "*.error"
+    patterns: "script*"
     recurse: yes
   register: found_scripts
 
