@@ -52,7 +52,7 @@
 # -----------------------------------------
 
 - debug: 
-    msg: "{{ vm_item }}"
+    msg: "{{ vm_ips | dict2items }}"
 
 - name: Find log files on each VM
   ansible.builtin.find:
