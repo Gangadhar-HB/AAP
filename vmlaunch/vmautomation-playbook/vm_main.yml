@@ -88,7 +88,8 @@
       run_once: true
 
     - debug:
-        var: "{{ vm_ips }}"
+        msg: "{{ groups['vm_ips'] }}"
+
 
 - name: Execute Post VM Launch tasks
   hosts: vm_ips
