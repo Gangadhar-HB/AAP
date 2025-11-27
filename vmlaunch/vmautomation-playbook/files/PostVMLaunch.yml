@@ -14,7 +14,7 @@
 
 - name: Build vm_ips dictionary from IP results
   ansible.builtin.set_fact:
-    vm_ips: "{{ vm_ips | combine({ vm.name: ip_with_gw }) }}"
+    vm_ips: "{{ vm_ips | combine({ vm_name: ip_with_gw }) }}"
 
 - name: Wait for SSH (port 22) on all VM primary IPs
   ansible.builtin.wait_for:
