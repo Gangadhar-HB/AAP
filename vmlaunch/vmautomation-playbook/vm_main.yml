@@ -78,17 +78,6 @@
       run_once: true
       when: successful_vms | length > 0
 
-    - name: Add each VM to dynamic group
-      ansible.builtin.add_host:
-        name: "{{ item.interfaces[0].ipaddress }}"
-        groups: vm_targets
-        vm_name: "{{ item.name }}"
-        vm_type: "{{ item.vm_type }}"
-      loop: "{{ vms }}"
-      when:
-        - "'F5' not in item.vm_type"
-        - "item.name not in (failed_vms | default([]))"
-
     - name: Post VM configuration
       ansible.builtin.include_tasks: files/PostVMLaunch.yml
       loop: "{{ vms }}"
