@@ -32,11 +32,10 @@
 - name: Find log files on each VM
   ansible.builtin.find:
     paths: /root/logs/vm_config_thin_vol.sh/
-    patterns: "scripts*"
+    patterns: "*.error"
     recurse: yes
   delegate_to: "{{ item.value }}"
   register: found_scripts
-  ignore_errors: true
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
