@@ -31,8 +31,12 @@
     paths: /root/logs/vm_config_thin_vol.sh/
     patterns: "*.error"
     recurse: yes
-  delegate_to: "{{ ip_with_gw }}"
+  delegate_to: "{{ item.value }}"
   register: found_scripts
+  loop: "{{ vm_ips | dict2items }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.key }} ({{ vm.value }})"
 
 - debug:
     msg: "Found scripts: {{ found_scripts }}"
