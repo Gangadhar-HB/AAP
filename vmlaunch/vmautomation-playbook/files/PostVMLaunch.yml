@@ -1,156 +1,138 @@
-##########################################################################
-# 1. Initialize dictionary
-##########################################################################
 - name: Initialize vm_ips dictionary
-  set_fact:
+  ansible.builtin.set_fact:
     vm_ips: {}
 
-##########################################################################
-# 2. Extract Primary IP (the one with gateway)
-##########################################################################
-- name: Extract primary IP for this VM
-  set_fact:
+- name: Fetch IP address from the VLAN having gateway
+  ansible.builtin.set_fact:
     ip_with_gw: "{{ item.ipaddress.split('/')[0] }}"
-  loop: "{{ item.networkInterface }}"
+  loop: "{{ vm.networkInterface }}"
   when: item.gw is defined and item.gw != ''
 
-- name: Display primary IP
-  debug:
+- name: Display extracted IP address
+  ansible.builtin.debug:
     msg: "{{ ip_with_gw }}"
 
-##########################################################################
-# 3. Build vm_ips dictionary
-##########################################################################
-- name: Build vm_ips dictionary
-  set_fact:
-    vm_ips: "{{ vm_ips | combine({ item.name: ip_with_gw }) }}"
+- name: Build vm_ips dictionary from IP results
+  ansible.builtin.set_fact:
+    vm_ips: "{{ vm_ips | combine({ vm.name: ip_with_gw }) }}"
 
-##########################################################################
-# 4. Wait for SSH availability
-##########################################################################
-- name: Wait for SSH (22) availability
+- name: Wait for SSH (port 22) on all VM primary IPs
   ansible.builtin.wait_for:
     host: "{{ item.value }}"
     port: 22
-    delay: 5
     timeout: 300
     state: started
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
 
-##########################################################################
-# 5. Manage known_hosts
-##########################################################################
-- name: Remove existing key from known_hosts
+# -----------------------------------------
+# REMOVE OLD SSH KEY USING ANSIBLE MODULE
+# -----------------------------------------
+
+- name: Remove old SSH key for VM from known_hosts
   ansible.builtin.known_hosts:
     name: "{{ item.value }}"
     state: absent
-  delegate_to: localhost
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
 
-- name: Add new SSH key for VM to known_hosts
+- name: Add new SSH key using Ansible module
   ansible.builtin.known_hosts:
     name: "{{ item.value }}"
     key: "{{ lookup('pipe', 'ssh-keyscan -H ' ~ item.value) }}"
     state: present
-  delegate_to: localhost
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
     label: "{{ item.key }} ({{ item.value }})"
 
-##########################################################################
-# 6. Check for script files
-##########################################################################
-- name: Find script files on VM
+# -----------------------------------------
+# FIND LOG FILES USING ANSIBLE FIND MODULE
+# -----------------------------------------
+
+- name: Find log files on each VM
   ansible.builtin.find:
-    paths: "/root/logs/vm_config_thin_vol.sh/"
+    paths: /root/logs/vm_config_thin_vol.sh/
+    recurse: yes
     patterns: "script*"
     file_type: file
-  register: found_scripts
   delegate_to: "{{ item.value }}"
-  when: item.key not in (failed_vms | default([]))
+  register: found_scripts
+  ignore_errors: true
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
+    label: "{{ item.key }}"
+  when: item.key not in (failed_vms | default([]))
 
-##########################################################################
-# 7. Check Logs for Errors
-##########################################################################
-- name: Read log content for ERROR lines
+# -----------------------------------------
+# READ FILES USING SLURP + CHECK FOR ERROR
+# -----------------------------------------
+
+- name: Read logs and search for ERROR
   ansible.builtin.slurp:
-    src: "{{ item.1.files | map(attribute='path') | list | first }}"
-  register: log_scan_result
+    src: "{{ item.1.files[0].path }}"
   delegate_to: "{{ item.0.value }}"
-  when:
-    - item.1.files is defined
-    - item.1.files | length > 0
+  register: vm_log_slurp
   loop: "{{ vm_ips | dict2items | zip(found_scripts.results) | list }}"
   loop_control:
     label: "{{ item.0.key }}"
+  when:
+    - item.1.files is defined
+    - item.1.files | length > 0
 
-- name: Fail if logs contain ERROR
-  fail:
+- name: Fail if log contains ERROR
+  ansible.builtin.fail:
     msg: |
-      Found ERROR(s) in logs on {{ vm_item.key }} ({{ vm_item.value }}):
-      {{ log_scan_result.results[idx].stdout }}
-  with_indexed: "{{ vm_ips | dict2items }}"
+      Found ERROR in logs on {{ item.0.key }} ({{ item.0.value }}):
+      {{ (item.1.content | b64decode).split('\n') }}
+  when:
+    - (item.1.content | b64decode is search('ERROR'))
+  loop: "{{ vm_ips | dict2items | zip(vm_log_slurp.results) | list }}"
   loop_control:
-    loop_var: vm_item_pair
-  vars:
-    idx: "{{ vm_item_pair.0 }}"
-    vm_item: "{{ vm_item_pair.1 }}"
-  when: "'ERROR' in (log_scan_result.results[idx].stdout | default(''))"
+    label: "{{ item.0.key }}"
 
+# -----------------------------------------
+# COSIGN BLOCK (UNCHANGED EXCEPT SHELL REMOVED)
+# -----------------------------------------
 
-##########################################################################
-# 8. Run cosign upgrade tasks per VM
-##########################################################################
 - block:
-    - name: Import tasks – cosign upgrade
-      import_tasks: cosign_upg.yml
+    - name: Import cosign_upg.yml
+      ansible.builtin.import_tasks: cosign_upg.yml
       delegate_to: "{{ ip_with_gw }}"
       become: yes
 
-    - name: Copy failed list to VM
+    - name: Copy cosign_failed_vms to VMs
       ansible.builtin.copy:
         src: "{{ cosign_failed_vms }}"
         dest: "/DGdata/Software/{{ cosign_failed_vms | basename }}"
-        mode: "0644"
+        mode: '0644'
       delegate_to: "{{ ip_with_gw }}"
       become: yes
+  when: repo_url is defined and repo_url and cosign_pub_key_file is defined and cosign_pub_key_file
 
-  when:
-    - repo_url is defined and repo_url is not none
-    - cosign_pub_key_file is defined and cosign_pub_key_file is not none
+# -----------------------------------------
+# NOT APPLYING COSIGN
+# -----------------------------------------
 
-##########################################################################
-# 9. Skip cosign when not configured
-##########################################################################
-- name: Skipping cosign if not configured
+- name: Not applying cosign when repo_url or key not defined
   ansible.builtin.debug:
-    msg: "Skipping cosign verification because repo_url or cosign_pub_key_file is not defined"
-  when:
-    - repo_url is not defined or repo_url is none
-    - cosign_pub_key_file is not defined or cosign_pub_key_file is none
+    msg: "Skipping cosign verification as repo_url or cosign_pub_key_file not defined"
+  when: repo_url is not defined or not repo_url or cosign_pub_key_file is not defined or not cosign_pub_key_file
 
-##########################################################################
-# 10. Modify nsswitch.conf native
-##########################################################################
-- name: Ensure 'dns' exists in hosts line
+# -----------------------------------------
+# NSSWITCH + RESOLV.CONF FIX (NATIVE)
+# -----------------------------------------
+
+- name: Ensure dns is appended to hosts line in /etc/nsswitch.conf
   ansible.builtin.lineinfile:
     path: /etc/nsswitch.conf
     regexp: '^hosts:'
-    line: "hosts: files myhostname dns"
+    line: "hosts:      files myhostname dns"
   delegate_to: "{{ ip_with_gw }}"
   become: yes
 
-##########################################################################
-# 11. Ensure resolv.conf has Google DNS
-##########################################################################
-- name: Ensure nameserver 8.8.8.8 exists
+- name: Ensure nameserver entry exists in resolv.conf
   ansible.builtin.lineinfile:
     path: /etc/resolv.conf
     line: "nameserver 8.8.8.8"
