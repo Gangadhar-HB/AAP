@@ -78,39 +78,7 @@
       run_once: true
       when: successful_vms | length > 0
 
-    - name: Add VMs to vm_ips group
-      ansible.builtin.add_host:
-        name: "{{ vm.networkInterface[0].ipaddress.split('/')[0] }}"
-        groups: vm_ips
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: vm
-      run_once: true
-
-    - debug:
-        msg: "{{ groups['vm_ips'] }}"
-
-
-- name: Execute Post VM Launch tasks
-  hosts: vm_ips
-  gather_facts: no
-  become: yes
-  tasks:
-
-    - name: Run PostVMLaunch per VM
-      include_tasks: files/PostVMLaunch.yml
-      vars:
-        vm_name: "{{ vm.name }}"
-        vm_type: "{{ vm.vm_type }}"
-        vm_ip: "{{ vm.networkInterface[0].ipaddress.split('/')[0] }}"
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: vm
-      when:
-        - "'F5' not in vm.vm_type"
-        - "vm.name not in (failed_vms | default([]))"
-
-#    - name: Fail if VMs failed to launch
-#      ansible.builtin.fail:
-#        msg: "Failed VMs list: {{ failed_vms }}"
-#      when: failed_vms | length > 0
+    - name: Fail if VMs failed to launch
+      ansible.builtin.fail:
+        msg: "Failed VMs list: {{ failed_vms }}"
+      when: failed_vms | length > 0
