@@ -92,16 +92,15 @@
     label: "{{ item.0.key }}"
 
 - name: Fail if logs contain ERROR
-  ansible.builtin.assert:
-    that:
-      - "'ERROR' not in (log_scan_result.results[item_index].content | b64decode)"
-    fail_msg: |
-      ERROR found in VM {{ item.key }} ({{ item.value }})
-  vars:
-    item_index: "{{ idx }}"
-  loop: "{{ vm_ips | dict2items }}"
+  fail:
+    msg: |
+      Found ERROR(s) in logs on {{ vm_item.0.key }} ({{ vm_item.0.value }}):
+      {{ log_scan_result.results[vm_item.1].stdout }}
+  loop: "{{ vm_ips | dict2items | enumerate }}"
   loop_control:
-    index_var: idx
+    loop_var: vm_item
+    index_var: vm_index
+  when: "'ERROR' in (log_scan_result.results[vm_index].stdout | default(''))"
 
 ##########################################################################
 # 8. Run cosign upgrade tasks per VM
