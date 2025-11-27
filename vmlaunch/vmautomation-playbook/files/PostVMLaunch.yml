@@ -51,18 +51,21 @@
 # FIND LOG FILES USING ANSIBLE FIND MODULE
 # -----------------------------------------
 
+- debug: 
+    msg: "{{ vm_ips | dict2items }}"
+
 - name: Find log files on each VM
   ansible.builtin.find:
-    paths: /root/logs/
-    patterns: "ls -lrt"
+    paths: /root/logs/vm_config_thin_vol.sh
+    patterns: "script*"
     recurse: yes
+  delegate_to: "{{ vm_item.value }}"
   register: found_scripts
   ignore_errors: true
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    label: "{{ item.key }} ({{ item.value }})"
-  become: yes
-  delegate_to: "{{ item.value }}"
+    loop_var: vm_item
+    label: "{{ vm_item.key }}"
 
 - debug:
     msg: "Found scripts: {{ found_scripts.results }}"
