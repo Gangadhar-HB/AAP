@@ -76,8 +76,17 @@
       delegate_to: "{{ ansible_host }}"
       loop: "{{ successful_vms }}"
       run_once: true
-      when: successful_vms | length > 0|
-      
+      when: successful_vms | length > 0
+
+    - name: Add VMs to vm_ips group
+      ansible.builtin.add_host:
+        name: "{{ vm.networkInterface[0].ipaddress.split('/')[0] }}"
+        groups: vm_ips
+      loop: "{{ vms }}"
+      loop_control:
+        loop_var: vm
+      run_once: true
+
 - name: Execute Post VM Launch tasks
   hosts: vm_ips
   gather_facts: no
