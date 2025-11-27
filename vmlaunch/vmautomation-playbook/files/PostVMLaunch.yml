@@ -35,19 +35,17 @@
     name: "{{ item.value }}"
     state: absent
   loop: "{{ vm_ips | dict2items }}"
-  delegate_to: "{{ vm_item.value }}"
   loop_control:
-    label: "{{ item.key }}"
+    label: "{{ item.key }} ({{ item.value }})"
 
 - name: Add new SSH key using Ansible module
   ansible.builtin.known_hosts:
     name: "{{ item.value }}"
     key: "{{ lookup('pipe', 'ssh-keyscan -H ' ~ item.value) }}"
     state: present
-  delegate_to: "{{ vm_item.value }}"
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    label: "{{ item.key }}"
+    label: "{{ item.key }} ({{ item.value }})"
 
 # -----------------------------------------
 # FIND LOG FILES USING ANSIBLE FIND MODULE
