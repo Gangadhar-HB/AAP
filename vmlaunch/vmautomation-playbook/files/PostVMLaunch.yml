@@ -6,6 +6,16 @@
     timeout: 300
   delegate_to: localhost
 
+- name: List log directory on VM
+  ansible.builtin.shell: "ls -lrt /root/logs/"
+  register: logs_list
+  changed_when: false
+  delegate_to: "{{ vm_ip }}"
+
+- debug:
+    var: logs_list
+
+
 - name: Find log files on each VM
   ansible.builtin.find:
     paths: /root/logs/vm_config_thin_vol.sh/
