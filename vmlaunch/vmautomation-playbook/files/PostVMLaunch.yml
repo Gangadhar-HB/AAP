@@ -94,13 +94,16 @@
 - name: Fail if logs contain ERROR
   fail:
     msg: |
-      Found ERROR(s) in logs on {{ vm_item.0.key }} ({{ vm_item.0.value }}):
-      {{ log_scan_result.results[vm_item.1].stdout }}
-  loop: "{{ vm_ips | dict2items | enumerate }}"
+      Found ERROR(s) in logs on {{ vm_item.key }} ({{ vm_item.value }}):
+      {{ log_scan_result.results[idx].stdout }}
+  with_indexed: "{{ vm_ips | dict2items }}"
   loop_control:
-    loop_var: vm_item
-    index_var: vm_index
-  when: "'ERROR' in (log_scan_result.results[vm_index].stdout | default(''))"
+    loop_var: vm_item_pair
+  vars:
+    idx: "{{ vm_item_pair.0 }}"
+    vm_item: "{{ vm_item_pair.1 }}"
+  when: "'ERROR' in (log_scan_result.results[idx].stdout | default(''))"
+
 
 ##########################################################################
 # 8. Run cosign upgrade tasks per VM
