@@ -1,9 +1,4 @@
 ---
-# This file contains ONLY tasks. No hosts:, no gather_facts:
-
-##############################################
-# 1. WAIT FOR VM SSH TO COME UP
-##############################################
 - name: Wait for SSH access on VM
   ansible.builtin.wait_for:
     host: "{{ vm_ip }}"
@@ -11,20 +6,16 @@
     timeout: 300
   delegate_to: localhost
 
-
-##############################################
-# 2. FIND ERROR FILES ON ALL VMs
-##############################################
 - name: Find log files on each VM
   ansible.builtin.find:
     paths: /root/logs/vm_config_thin_vol.sh/
     patterns: "*.error"
     recurse: yes
+  register: found_scripts
 
+- debug:
+    var: found_scripts
 
-##############################################
-# 3. READ ERROR FILES
-##############################################
 - name: Read log files
   ansible.builtin.slurp:
     src: "{{ find_item.files[0].path }}"
@@ -40,10 +31,6 @@
     find_item: "{{ zipped.1 }}"
   when: find_item.files | length > 0
 
-
-##############################################
-# 4. FAIL IF ANY ERROR FOUND
-##############################################
 - name: Fail if log contains ERROR
   ansible.builtin.fail:
     msg: |
@@ -61,10 +48,6 @@
     - slurp_item.content is defined
     - slurp_item.content | b64decode is search('ERROR')
 
-
-##############################################
-# 5. COSIGN BLOCK
-##############################################
 - block:
     - name: Import cosign_upg.yml
       ansible.builtin.import_tasks: cosign_upg.yml
