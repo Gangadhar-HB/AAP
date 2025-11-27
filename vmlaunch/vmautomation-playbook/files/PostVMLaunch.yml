@@ -32,6 +32,10 @@
     patterns: "*.error"
     recurse: yes
   delegate_to: "{{ vm.value }}"
+  delegate_facts: false
+  vars:
+    ansible_user: autoinstall
+    ansible_port: 22
   register: found_scripts
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
