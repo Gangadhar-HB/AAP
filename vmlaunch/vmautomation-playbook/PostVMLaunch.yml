@@ -26,13 +26,14 @@
 
   - name: Wait for SSH access on each VM
     ansible.builtin.wait_for:
-      host: "{{ item }}"
+      host: "{{ hostvars[item].ansible_host | default(item) }}"
       port: 22
       timeout: 300
     delegate_to: localhost
-    loop: "{{ vm_ips }}"
+    loop: "{{ groups['vm_ips'] }}"
     loop_control:
       label: "{{ item }}"
+
   
   - name: List log directory on VM
     ansible.builtin.shell: "ls -lrt /root/logs/"
