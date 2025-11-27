@@ -5,7 +5,7 @@
 - name: Fetch IP address from the VLAN having gateway
   ansible.builtin.set_fact:
     ip_with_gw: "{{ item.ipaddress.split('/')[0] }}"
-  loop: "{{ vm.networkInterface }}"
+  loop: "{{ item.networkInterface }}"
   when: item.gw is defined and item.gw != ''
 
 - name: Display extracted IP address
