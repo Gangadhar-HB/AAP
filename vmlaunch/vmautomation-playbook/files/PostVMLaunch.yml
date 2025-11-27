@@ -54,46 +54,53 @@
 - name: Find log files on each VM
   ansible.builtin.find:
     paths: /root/logs/vm_config_thin_vol.sh/
-    recurse: yes
     patterns: "script*"
-    file_type: file
+    recurse: yes
   delegate_to: "{{ item.value }}"
   register: found_scripts
   ignore_errors: true
   loop: "{{ vm_ips | dict2items }}"
   loop_control:
-    label: "{{ item.key }}"
-  when: item.key not in (failed_vms | default([]))
+    loop_var: vmitem
+    label: "{{ vmitem.key }}"
+
 
 # -----------------------------------------
 # READ FILES USING SLURP + CHECK FOR ERROR
 # -----------------------------------------
 
-- name: Read logs and search for ERROR
+- name: Read log files
   ansible.builtin.slurp:
-    src: "{{ item.1.files[0].path }}"
-  delegate_to: "{{ item.0.value }}"
-  register: vm_log_slurp
+    src: "{{ find_result.files[0].path }}"
+  delegate_to: "{{ vm_item.value }}"
+  register: vm_slurped_logs
   loop: "{{ vm_ips | dict2items | zip(found_scripts.results) | list }}"
   loop_control:
-    label: "{{ item.0.key }}"
-  when:
-    - item.1.files is defined
-    - item.1.files | length > 0
+    loop_var: zipped
+    label: "{{ zipped.0.key }}"
+  vars:
+    vm_item: "{{ zipped.0 }}"
+    find_result: "{{ zipped.1 }}"
+  when: find_result.files | length > 0
 
-- debug:
-    msg: "{{ vm_log_slurp }}"
 
 - name: Fail if log contains ERROR
   ansible.builtin.fail:
     msg: |
-      Found ERROR in logs on {{ item.0.key }} ({{ item.0.value }}):
-      {{ (item.1.content | b64decode).split('\n') }}
-  when:
-    - (item.1.content | b64decode is search('ERROR'))
-  loop: "{{ vm_ips | dict2items | zip(vm_log_slurp.results) | list }}"
+      Found ERROR(s) in logs on {{ vm_item.key }} ({{ vm_item.value }}):
+      {{ (slurp_result.content | b64decode).split('\n') }}
+  loop: "{{ vm_ips | dict2items | zip(vm_slurped_logs.results) | list }}"
   loop_control:
-    label: "{{ item.0.key }}"
+    loop_var: zipped
+    label: "{{ zipped.0.key }}"
+  vars:
+    vm_item: "{{ zipped.0 }}"
+    slurp_result: "{{ zipped.1 }}"
+  when:
+    - slurp_result is defined
+    - slurp_result.content is defined
+    - slurp_result.content | b64decode is search('ERROR')
+
 
 # -----------------------------------------
 # COSIGN BLOCK (UNCHANGED EXCEPT SHELL REMOVED)
