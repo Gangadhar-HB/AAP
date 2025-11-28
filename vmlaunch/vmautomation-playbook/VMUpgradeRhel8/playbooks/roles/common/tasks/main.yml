@@ -93,10 +93,9 @@
 - local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
   when: (  host_type == 'vm' )  and ( kodiak_vm_latest_patch.stdout != "" )
 
-- local_action: shell /bin/cat /home/autoinstall/{{ check_status_file }}
+- name: Read check status file from remote host
+  ansible.builtin.shell: "cat /home/autoinstall/{{ check_status_file }}"
   register: check_status
-  delegate_to: localhost
-
 
 - meta: end_play
   when: check_status.stdout == 'fail'
