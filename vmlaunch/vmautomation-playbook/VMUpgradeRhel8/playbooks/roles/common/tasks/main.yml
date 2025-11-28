@@ -48,14 +48,13 @@
   any_errors_fatal: true
   when: host_type == 'bm' and libvirt_check.rc != 0
 
-- debug:
-    msg: "Checking for VM : {{ vm_name }} on 2U host"
-    loop: "{{ vms }}"
-    loop_control:
-      loop_var: vm
-    vars:
-      vm_name: "{{ vm.name }}"
-    when: host_type == 'bm'
+- name: Debug VM names on bare-metal hosts
+  debug:
+    msg: "Checking for VM : {{ vm.name }} on 2U host"
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+  when: host_type == 'bm'
 
 - name: check for VM on the 2U Host
   command: virsh -c qemu:///system dominfo {{ vm_name }}
