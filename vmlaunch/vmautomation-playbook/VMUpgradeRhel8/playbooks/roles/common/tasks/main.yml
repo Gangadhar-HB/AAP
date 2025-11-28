@@ -95,6 +95,7 @@
 
 - local_action: shell /bin/cat /home/autoinstall/{{ check_status_file }}
   register: check_status
+  delegate_to: localhost
 
 
 - meta: end_play
