@@ -17,7 +17,6 @@
     owner: autoinstall
     group: kodiakgroup
     mode: '0644'
-  when: host_type == 'vm'
 
 - name: Verify libvirt group check for autoinstall
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
