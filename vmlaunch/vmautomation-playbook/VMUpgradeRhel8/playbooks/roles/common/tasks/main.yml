@@ -49,15 +49,25 @@
   when: host_type == 'bm' and libvirt_check.rc != 0
 
 - debug:
-    msg:
-    - "Checking for VM : {{ name }} on 2U host"
+    msg: "Checking for VM : {{ vm_name }} on 2U host"
+    loop: "{{ vms }}"
+    loop_control:
+      loop_var: vm
+    vars:
+      vm_name: "{{ vm.name }}"
+    when: host_type == 'bm'
 
 - name: check for VM on the 2U Host
-  command: virsh -c qemu:///system dominfo {{ name }}
+  command: virsh -c qemu:///system dominfo {{ vm_name }}
   register: vm_check
   when: host_type == 'bm'
   failed_when: vm_check.rc == 1
   any_errors_fatal: true
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+  vars:
+    vm_name: "{{ vm.name }}"
 
 - name: Check for latest patch
   command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
