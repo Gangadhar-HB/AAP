@@ -14,16 +14,31 @@
         name: common
     tags:
     - validation
+    loop: "{{ vms }}"
+    loop_control:
+      loop_var: vm
+    vars:
+      vm_name: "{{ vm.name }}"
   
   - import_role:
         name: bmhlvm
     tags:
-    - bmhlvm 
+    - bmhlvm
+        loop: "{{ vms }}"
+    loop_control:
+      loop_var: vm
+    vars:
+      vm_name: "{{ vm.name }}"
   
   - import_role:
         name: vmupg
     tags:
     - vmupg
+        loop: "{{ vms }}"
+    loop_control:
+      loop_var: vm
+    vars:
+      vm_name: "{{ vm.name }}"
   
 
 #  - name: Listing all docker images in /DGdata/Loads/docker_images/

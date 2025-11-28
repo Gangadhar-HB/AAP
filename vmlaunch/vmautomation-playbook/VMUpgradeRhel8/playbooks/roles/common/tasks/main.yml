@@ -58,10 +58,7 @@
 
 - name: Debug VM names on bare-metal hosts
   debug:
-    msg: "Checking for VM : {{ vm.name }} on 2U host"
-  loop: "{{ vms }}"
-  loop_control:
-    loop_var: vm
+    msg: "Checking for VM : {{ vm_name }} on 2U host"
   when: host_type == 'bm'
 
 - name: check for VM on the 2U Host
@@ -70,11 +67,6 @@
   when: host_type == 'bm'
   failed_when: vm_check.rc == 1
   any_errors_fatal: true
-  loop: "{{ vms }}"
-  loop_control:
-    loop_var: vm
-  vars:
-    vm_name: "{{ vm.name }}"
 
 - name: Check for latest patch
   command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
