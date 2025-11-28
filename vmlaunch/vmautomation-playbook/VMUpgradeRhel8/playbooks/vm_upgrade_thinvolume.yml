@@ -5,7 +5,7 @@
 #
 ---
 - name: VM re-launching on Bare Metal host with existing thin volume
-  hosts: bare_metal_hosts,vm_hosts
+  hosts:  all
   gather_facts: yes
   any_errors_fatal: true
   remote_user: "{{ upg_user }}"
