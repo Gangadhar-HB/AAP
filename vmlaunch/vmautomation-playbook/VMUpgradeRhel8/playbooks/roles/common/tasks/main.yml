@@ -77,9 +77,10 @@
   any_errors_fatal: true
 
 - debug: msg="kodiak_vm_latest_patch {{ kodiak_vm_latest_patch }} "
+  when: host_type == 'vm'
 
 - debug: msg="VM already Upgraded {{ check_status_file }} "
-  when: ( host_type == 'vm' )  and ( kodiak_vm_latest_patch.stdout != "" )
+  when: ( host_type == 'vm' ) and ( kodiak_vm_latest_patch.stdout != "" )
 
 - local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
   when: (  host_type == 'vm' )  and ( kodiak_vm_latest_patch.stdout != "" )
