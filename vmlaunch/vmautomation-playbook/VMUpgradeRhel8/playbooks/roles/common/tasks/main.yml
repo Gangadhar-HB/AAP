@@ -15,7 +15,7 @@
     dest: "/home/autoinstall/check_status_{{ ansible_host }}"
     content: "true\n"
     owner: autoinstall
-    group: autoinstall
+    group: kodiakgroup
     mode: '0644'
   when: host_type == 'vm'
 
