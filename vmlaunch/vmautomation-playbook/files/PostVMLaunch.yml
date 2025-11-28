@@ -9,16 +9,9 @@
     port: 22
     timeout: 300
 
-- name: Add VM to known_hosts
-  ansible.builtin.shell: ls -lrt
-  register: output
-
-- debug:
-    var: output
-
 - name: Find log files on each VM
   ansible.builtin.find:
-    paths: /root/logs/vm_config_thin_vol.sh/
+    paths: /root/logs/vm_config_thin_vol.sh
     patterns: "script*"
     recurse: yes
   register: found_scripts
