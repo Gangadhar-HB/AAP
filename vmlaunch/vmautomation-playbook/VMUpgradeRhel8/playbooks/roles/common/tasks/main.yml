@@ -10,6 +10,15 @@
     dest: /root/.ssh/known_hosts
   delegate_to: localhost
 
+- name: Create VM status file with value true
+  ansible.builtin.copy:
+    dest: "/home/autoinstall/check_status_{{ ansible_host }}"
+    content: "true\n"
+    owner: autoinstall
+    group: autoinstall
+    mode: '0644'
+  when: host_type == 'vm'
+
 - name: Verify libvirt group check for autoinstall
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_check
