@@ -50,10 +50,10 @@
 
 - debug:
     msg:
-    - "Checking for VM : {{ vm_name }} on 2U host"
+    - "Checking for VM : {{ name }} on 2U host"
 
 - name: check for VM on the 2U Host
-  command: virsh -c qemu:///system dominfo {{ vm_name }}
+  command: virsh -c qemu:///system dominfo {{ name }}
   register: vm_check
   when: host_type == 'bm'
   failed_when: vm_check.rc == 1
