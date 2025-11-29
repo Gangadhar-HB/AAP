@@ -22,7 +22,7 @@
 
   - name: Verify QCOW2 image checksum
     ansible.builtin.command:
-      cmd: qemu-img check /home/autoinstall/{{ qcow2_name }}
+      cmd: qemu-img check /home/autoinstall/{{ VM_UPGRADE_QCOW2 }}
     register: qcow_check
     ignore_errors: yes
     delegate_to: "{{ BMIP }}"
@@ -127,7 +127,7 @@
     any_errors_fatal: true
 
   - name: copying image to /var/lib/libvirt/images/
-    command: cp -pvf /home/autoinstall/{{ qcow2_name }} {{ os_partition.stdout }}
+    command: cp -pvf /home/autoinstall/{{ VM_UPGRADE_QCOW2 }} {{ os_partition.stdout }}
     register: copy_qcow2_libvirt
     delegate_to: "{{ BMIP }}"
     when: os_partition.stdout.find(".qcow2") != -1
