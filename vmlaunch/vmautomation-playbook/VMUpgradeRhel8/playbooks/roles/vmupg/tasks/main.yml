@@ -18,6 +18,7 @@
   - name: copy qcow2 to Baremetal host
     copy: src="{{ qcow2 }}" dest="/home/autoinstall" mode="0755"
     delegate_to: "{{ BMIP }}"
+    remote_src: yes
     any_errors_fatal: true
 
   - name: Verify QCOW2 image checksum
