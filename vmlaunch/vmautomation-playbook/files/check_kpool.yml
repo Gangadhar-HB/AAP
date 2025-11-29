@@ -1,57 +1,55 @@
 ---
-
-- name: Set fact for vm hostname
-  ansible.builtin.set_fact:
-    ansible_host: "{{ BMIP }}"
-
-- name: Get existing thin pools
-  ansible.builtin.command:
-    cmd: lvs -a -o lv_name
-  register: lv_names
-- name: Check if kpool exists
-  ansible.builtin.set_fact:
-    hasKpool: "{{ 'kpool' in lv_names.stdout_lines }}"
+- name: check the thin pool is present or not
+  ansible.builtin.command: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
+  register: hasKpool
 
 - block:
-    - name: Get detailed lvs output for kpool
-      ansible.builtin.command:
-        cmd: lvs -a -o lv_name,lv_size --units g --nosuffix
-      register: kpool_info
-    - name: Extract kpool size (GB)
-      ansible.builtin.set_fact:
-        kpool_size_gb: "{{ item.split()[1] | float }}"
-      loop: "{{ kpool_info.stdout_lines }}"
-      when: item.startswith('kpool ')
-      loop_control:
-        loop_var: item
-    - name: Set thinPoolsize from existing kpool
-      ansible.builtin.set_fact:
-        thinPoolsize: "{{ (kpool_size_gb * 1024) | int }}"   # convert GB → MB
-  when: hasKpool
+   - name: get the thinpool unit
+     ansible.builtin.command: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
+     register: kpoolsize_unit
+
+   - name: check the thin pool size
+     ansible.builtin.command: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
+     register: kpoolsize_tb
+     when: kpoolsize_unit.stdout == "t"
+
+   - name: check the thin pool size
+     ansible.builtin.command: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
+     register: kpoolsize_gb
+     when: kpoolsize_unit.stdout == "g"
+
+
+   - set_fact:
+      thinPoolsize:  "{{ kpoolsize_tb.stdout }}"
+     when: kpoolsize_unit.stdout == "t"
+
+   - set_fact:
+      thinPoolsize:  "{{ kpoolsize_gb.stdout }}"
+     when: kpoolsize_unit.stdout == "g"
+
+
+  when: hasKpool.stdout != ''
 
 - block:
-    - name: Read VG details using `vgdisplay`
-      ansible.builtin.command:
-        cmd: vgdisplay -c {{ vg_name | default('vg01') }}
-      register: vg_raw
-    - name: Parse free PE from vgdisplay output
-      ansible.builtin.set_fact:
-        vg_fields: "{{ vg_raw.stdout.split(':') }}"
-    - name: Set free space (MB)
-      ansible.builtin.set_fact:
-        freespace_mb: "{{ (vg_fields[15] | int) * 4 }}"
-    - name: Compute 80% of free space
-      ansible.builtin.set_fact:
-        new_thinpoolsize_mb: "{{ (freespace_mb * (thinpool_BM | default(80)) / 100) | int }}"
-    - name: Create thin pool if enough free space
-      community.general.lvol:
-        vg: "{{ vg_name | default('vg01') }}"
-        lv: kpool
-        size: "{{ new_thinpoolsize_mb }}M"
-        opts: "--thinpool"
-      when: new_thinpoolsize_mb < freespace_mb
-    - name: Set thinPoolsize from new pool
-      ansible.builtin.set_fact:
-        thinPoolsize: "{{ new_thinpoolsize_mb }}"
-  when: not hasKpool
+   - name: get the free space
+     ansible.builtin.command: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
+     register: freespace
 
+
+   - name: "calculate the 80 percent of free space"
+     ansible.builtin.command: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
+     register: new_thinpoolsize
+
+
+
+   - name: check the free space and create thin pool if not created
+     ansible.builtin.command: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
+     when: hasKpool.stdout == '' and ( new_thinpoolsize.stdout | int ) < ( freespace.stdout | int )
+     become: true
+     become_user: root
+     failed_when: ( new_thinpoolsize.stdout | int ) > ( freespace.stdout | int )
+
+   - set_fact:
+      thinPoolsize: "{{ new_thinpoolsize.stdout }}"
+
+  when: hasKpool.stdout == ''

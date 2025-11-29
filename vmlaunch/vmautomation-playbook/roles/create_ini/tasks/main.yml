@@ -1,9 +1,9 @@
 # roles/create_ini/tasks/main.yml
 ---
 
-- name: Setting fact for vm hostname
-  ansible.builtin.set_fact:
-    ansible_host: "{{ BMIP }}"
+#- name: Setting fact for vm hostname
+#  ansible.builtin.set_fact:
+#   ansible_host: "{{ BMIP }}"
 
 - name: Validate F5 specific configuration
   block:
