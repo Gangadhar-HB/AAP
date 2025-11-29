@@ -1,6 +1,6 @@
 ---
 # check_vm_present.yml
-- name: Check if VM {{ item.name }} is already present on {{ ansible_host }}
+- name: Check if VM {{ item.name }} is already present on {{ BMIP }}
   community.libvirt.virt:
     command: list_vms
   register: vm_list
