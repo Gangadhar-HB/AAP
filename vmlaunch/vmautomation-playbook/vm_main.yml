@@ -25,19 +25,19 @@
     
     - name: VM Creation Block
       block:
-#        - name: Generate configuration files
-#          ansible.builtin.include_role:
-#            name: create_cfg
-#          vars:
-#            vm_type: "{{ item.vm_type }}"
-#            vm_name: "{{ item.name }}"
-#          loop: "{{ vms }}"
-#          loop_control:
-#            loop_var: item
-#          when: 
-#            - "'F5' not in item.vm_type"
-#            - "item.name not in already_present"
-#            - "vm_to_rerun is not defined or vm_to_rerun == item.name"
+        - name: Generate configuration files
+          ansible.builtin.include_role:
+            name: create_cfg
+          vars:
+            vm_type: "{{ item.vm_type }}"
+            vm_name: "{{ item.name }}"
+          loop: "{{ vms }}"
+          loop_control:
+            loop_var: item
+          when: 
+            - "'F5' not in item.vm_type"
+            - "item.name not in already_present"
+            - "vm_to_rerun is not defined or vm_to_rerun == item.name"
 
         - name: Generate INI files
           ansible.builtin.include_role:

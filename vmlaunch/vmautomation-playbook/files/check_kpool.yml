@@ -3,11 +3,6 @@
   shell: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
   register: hasKpool
 
-- name: check the thin pool is present or not
-  ansible.builtin.command: "lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
-  register: hasKpool
-  become: true
-
 - block:
    - name: get the thinpool unit
      shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
