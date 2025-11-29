@@ -19,6 +19,13 @@ write_files:
     content: |
       {{ user_data_action[item.vm_type] | indent(6) }}
 
+      # Additional system volumes
+      var_log=50G,/var/log,0755,remap,ext4,defaults
+      var_log_audit=10G,/var/log/audit,0750,remap,ext4,defaults
+      var_tmp=25G,/var/tmp,1777,remap,ext4,defaults,nosuid,nodev,noexec
+      var_lib_docker=20G,/var/lib/docker,0700,remap,ext4,defaults
+      home=10G,/home,0755,remap,ext4,defaults,nodev
+      usr_local_etc=1G,/usr/local/etc,0755,remap,ext4,defaults
   
   - path: /etc/systemd/system/partition.service
     permissions: '0777'
