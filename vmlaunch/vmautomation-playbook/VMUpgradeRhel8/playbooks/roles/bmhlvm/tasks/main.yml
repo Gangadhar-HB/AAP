@@ -129,18 +129,13 @@
         - "'target sdz already exists' not in lvm_disk_attach.stderr"
   delegate_to: "{{ BMIP }}"
 
-
-
-
 - name: getting new disk unit number output
   command: echo "{{ disk_number.stdout|int }}"
   become: yes
   register: diskunitnumber
-
-  when: inventory_hostname == BMIP
+  delegate_to: "{{ BMIP }}"
 
 - debug: var=diskunitnumber.stdout
-
 
 - name: Gather disk device names on baremtal host
   shell: >
@@ -151,12 +146,10 @@
 
 - debug: var=disk_device_name.stdout
 
-
 - name: getting scsci unit number
   set_fact:
     disk_scsci_num: "{{ diskunitnumber.stdout }}"
   delegate_to: "{{ BMIP }}"
-
 
 - name: getting baremetal disk name
   set_fact:
@@ -195,7 +188,6 @@
   become: yes
   when:  volume_stat.rc != 0
 
-
 - name: finding pv_name  details
   shell: |
    pvname=`ls -ltr /dev/disk/by-id/ | awk -F'/' '{print $3}' | grep -ie "{{ bmhostdisk_name.stdout }}" | tail -n1`
@@ -219,11 +211,9 @@
   become: yes
   when:  volume_stat.rc != 0
 
-
 - name: printing the vg01 size
   debug: var=vgsize.stdout
   when:  volume_stat.rc != 0
-
 
 - debug: var=vgsize.stdout
 
@@ -255,13 +245,11 @@
   become: yes
   when:  volume_stat.rc != 0
 
-
 - name: Check logical volume size
   shell: lvs --noheadings -o lv_size '/dev/mapper/vg01-var_tmp' | sed 's/^ *//'|  cut -d'.' -f1
   register: lvsize
   become: yes
   
-
 - debug:
    var: lvsize.stdout
 
