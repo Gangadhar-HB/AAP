@@ -9,6 +9,10 @@
 # ----------------------------------------------
 - name: Gather LVM information
   ansible.builtin.setup:
+    gather_subset:
+      - '!all'
+      - '!min'
+      - hardware
     filter: ansible_lvm
 # ----------------------------------------------
 # Determine whether kpool exists
