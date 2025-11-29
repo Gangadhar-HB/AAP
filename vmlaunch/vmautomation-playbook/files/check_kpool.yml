@@ -1,21 +1,29 @@
 ---
 - name: check the thin pool is present or not
-  shell: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
+  build_in_command: 
+    cmd: "lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
   register: hasKpool
+  become: true
 
 - block:
    - name: get the thinpool unit
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
+     build_in_command: 
+      cmd: "lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
      register: kpoolsize_unit
+     become: true
 
    - name: check the thin pool size
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
+     build_in_command: 
+       cmd: "lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
      register: kpoolsize_tb
+     become: true
      when: kpoolsize_unit.stdout == "t"
 
    - name: check the thin pool size
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
+     build_in_command: 
+       cmd: "lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
      register: kpoolsize_gb
+     become: true
      when: kpoolsize_unit.stdout == "g"
 
 
@@ -32,18 +40,21 @@
 
 - block:
    - name: get the free space
-     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
+     build_in_command: 
+       cmd: "/usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
      register: freespace
+     become: true
 
 
    - name: "calculate the 80 percent of free space"
-     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
+     build_in_command: 
+       cmd: "/usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
      register: new_thinpoolsize
-
-
+     become: true
 
    - name: check the free space and create thin pool if not created
-     shell: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
+     build_in_command: 
+       cmd: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
      when: hasKpool.stdout == '' and ( new_thinpoolsize.stdout | int ) < ( freespace.stdout | int )
      become: true
      become_user: root
