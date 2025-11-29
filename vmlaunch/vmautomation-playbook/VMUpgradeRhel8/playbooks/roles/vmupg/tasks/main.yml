@@ -237,6 +237,7 @@
       become_user: root
   
     - fail: msg="podman service is not started"
+      when:
         - podman_status.rc != 0
         - ansible_os_family == "RedHat"
         - ansible_distribution_major_version|int == "8"
