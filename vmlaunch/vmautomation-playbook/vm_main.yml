@@ -2,6 +2,7 @@
 - name: VM Provisioning Playbook
   hosts: all
   gather_facts: false
+  become: true
 
   vars:
     already_present: []
