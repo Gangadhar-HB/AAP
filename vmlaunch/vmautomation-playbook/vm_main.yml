@@ -22,7 +22,6 @@
       loop: "{{ vms }}"
       loop_control:
         loop_var: item
-      delegate_to: "{{ BMIP }}"
     
     - name: VM Creation Block
       block:
