@@ -10,18 +10,18 @@
       virsh domblklist {{ vm_name }} | awk 'NR > 2  {print $2} '  | grep podmanstorage
   register: bmlvm
   become: yes
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
   changed_when: false
   failed_when: false
 
 - debug: var=bmlvm.stdout
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - name: Checking LVM volume is created in the BareMetal host
   shell: "lvs | grep -iw {{ vm_name }}_{{ lv_name }}"
   register: lvmpodman
   become: yes
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
   changed_when: false
   failed_when: false
 
@@ -29,7 +29,7 @@
 - name: print o/p of lvm volume
   debug:
      msg: "{{ bmlvm.stdout }} is the output}}"
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 
 - name: Extract and convert to integer
@@ -37,20 +37,20 @@
      LV_SIZE=`lvs -a -o name,lv_size vg01 --units g| grep -w 'kpool' |tr -d "<" | awk '{print $2}'`
      echo $LV_SIZE | awk -F'[^0-9]' '{print $1}'
   register: result_integer
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - debug:
     var: result_integer.stdout | int
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - name: getting vgs space with set_fact
   set_fact:
     vgsspace: "{{ result_integer.stdout | int  }}"
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 
 - debug: var=vgsspace
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 
 - name: Creating lvm volume on Baremetal Host
@@ -58,25 +58,25 @@
   command: /sbin/lvcreate --wipesignatures y --virtualsize {{ lv_size }} -n {{ vm_name }}_{{ lv_name }} --thin vg01/kpool
   register: lvcreate
   become: yes
-  when: ansible_host == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == ""
+  when: inventory_hostname == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == ""
 
 - debug: var=lvcreate.stdout
-  when: ansible_host == BMIP and bmlvm.stdout == ""
+  when: inventory_hostname == BMIP and bmlvm.stdout == ""
 
 - name: disk device name list
   set_fact:
     disk_device: [ "sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg" ]
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 
 - name: disk device scsci unit number
   set_fact:
     disk_unit_num: [ "0", "1", "2", "3", "4", "5" ]
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - fail:
     msg: "{{ vm_name }}_{{ lv_name }} already exists...."
-  when: ansible_host == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == "" and lvcreate.rc != 0
+  when: inventory_hostname == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == "" and lvcreate.rc != 0
 
 
 
@@ -86,7 +86,7 @@
 
   become: yes
   register: disk_number
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - debug: var=disk_number.stdout
 
@@ -94,17 +94,17 @@
   command: sudo /usr/bin/dd if=/dev/zero of=/dev/vg01/{{ vm_name }}_{{ lv_name }} bs=1024 count=1000 conv=notrunc
   become: yes
   register: vm_dd
-  when: ansible_host == BMIP and bmlvm.stdout == ""
+  when: inventory_hostname == BMIP and bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "/dev/vg01/{{ vm_name }}_{{ lv_name }}"
-  when: ansible_host == BMIP and bmlvm.stdout == ""
+  when: inventory_hostname == BMIP and bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "{{ bmlvm.stdout }}"
-  when: ansible_host == BMIP and bmlvm.stdout != ""
+  when: inventory_hostname == BMIP and bmlvm.stdout != ""
 
 
 - name: Attach lvm partition for the VM
@@ -112,16 +112,16 @@
   become: yes
   register: lvm_disk_attach
   ignore_errors: true
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - debug: var=lvm_disk_attach.stdout
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - fail: msg=" sdz attach failed"
   failed_when:
         - lvm_disk_attach.rc != 0
         - "'target sdz already exists' not in lvm_disk_attach.stderr"
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 
 
@@ -131,7 +131,7 @@
   become: yes
   register: diskunitnumber
 
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - debug: var=diskunitnumber.stdout
 
@@ -141,7 +141,7 @@
      virsh domblklist {{ vm_name }} | awk 'NR>1 {print $1}' | grep -ie "sd" | tail -n1
   become: yes
   register: disk_device_name
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - debug: var=disk_device_name.stdout
 
@@ -149,13 +149,13 @@
 - name: getting scsci unit number
   set_fact:
     disk_scsci_num: "{{ diskunitnumber.stdout }}"
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 
 - name: getting baremetal disk name
   set_fact:
     disk_name: "{{ disk_device_name.stdout }}"
-  when: ansible_host == BMIP
+  when: inventory_hostname == BMIP
 
 - name: checking /var/lib/containers exist or not
   command: mountpoint -q /var/lib/containers
@@ -163,7 +163,7 @@
   register: volume_stat
   failed_when: False
   changed_when: False
-  when: ansible_host != BMIP
+  when: inventory_hostname != BMIP
 
 - debug: var=volume_stat.stdout
 
@@ -171,24 +171,24 @@
   shell: >
     ls -l /dev/disk/by-id|  grep "sdz " |  awk '{print $NF}' | cut -d '/' -f3
   register: bmhostdisk_name
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - debug: var=bmhostdisk_name.stdout
 
 - name: wipefs the newly added disk
   command: wipefs "/dev/{{ bmhostdisk_name.stdout }}"
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - name: running parted command create label
   command: parted -s "/dev/{{ bmhostdisk_name.stdout }}" mklabel gpt
   become: yes
-  when: ansible_host != BMIP  and volume_stat.rc != 0
+  when: inventory_hostname != BMIP  and volume_stat.rc != 0
 
 - name: running parted command mkpart
   command: parted -s -a optimal "/dev/{{ bmhostdisk_name.stdout }}" mkpart primary 0% 100% set 1 lvm
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 
 - name: finding pv_name  details
@@ -197,27 +197,27 @@
    echo "$pvname"
   register: pv_name
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - name: printing pvname
   debug: var=pv_name.stdout
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - name: pvcreate on new pv
   command: pvcreate "/dev/{{ pv_name.stdout }}"
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - name: Extend the vg01 volume group
   command: vgextend vg01 "/dev/{{ pv_name.stdout }}"
   register: vgsize
   become: yes
-  when: ansible_host != BMIP  and volume_stat.rc != 0
+  when: inventory_hostname != BMIP  and volume_stat.rc != 0
 
 
 - name: printing the vg01 size
   debug: var=vgsize.stdout
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 
 - debug: var=vgsize.stdout
@@ -225,12 +225,12 @@
 - name: Create the "{{ lv_name }}" Logical Volume.
   shell: lvcreate -L "{{ lv_size_vm }}" -n "{{ lv_name }}" vg01
   become: yes
-  when: ansible_host != BMIP  and volume_stat.rc != 0
+  when: inventory_hostname != BMIP  and volume_stat.rc != 0
 
 - name: Create a "{{ fs }}" filesystem on lvm "/dev/mapper/{{ vg_name}}-{{ lv_name}}"
   shell: mkfs.xfs  /dev/mapper/vg01-{{ lv_name }}
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - name: Create a directory to mount the filesystem.
   file:
@@ -238,24 +238,24 @@
     state: directory
     mode: '0755'
   become: yes
-  when: ansible_host != BMIP  and volume_stat.rc != 0
+  when: inventory_hostname != BMIP  and volume_stat.rc != 0
 
 - name: Mount the created "{{ fs }}" filesystem.
   shell: sed -i '$ a\/dev/mapper/vg01-{{ lv_name }} /var/lib/containers xfs defaults 0 0' /etc/fstab
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 - name: Mount the created "{{ fs }}" filesystem.
   shell: mount -a
   become: yes
-  when: ansible_host != BMIP and volume_stat.rc != 0
+  when: inventory_hostname != BMIP and volume_stat.rc != 0
 
 
 - name: Check logical volume size
   shell: lvs --noheadings -o lv_size '/dev/mapper/vg01-var_tmp' | sed 's/^ *//'|  cut -d'.' -f1
   register: lvsize
   become: yes
-  when: ansible_host != BMIP
+  when: inventory_hostname != BMIP
 
 - debug:
    var: lvsize.stdout
@@ -263,9 +263,9 @@
 - name: Extending vg01-var_tmp space for rhel8
   command: lvextend -r -L +25G /dev/mapper/vg01-var_tmp
   become: yes
-  when: ansible_host != BMIP and lvsize.stdout | int  <= 25
+  when: inventory_hostname != BMIP and lvsize.stdout | int  <= 25
 
 - name: Resizing vg01-var_tmp space for rhel8
   command: resize2fs /dev/mapper/vg01-var_tmp
   become: yes
-  when: ansible_host != BMIP
+  when: inventory_hostname != BMIP
