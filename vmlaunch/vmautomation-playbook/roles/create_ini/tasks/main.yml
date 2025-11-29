@@ -1,6 +1,10 @@
 # roles/create_ini/tasks/main.yml
 ---
-#https://github.com/f5devcentral/tmos-cloudinit/blob/master/tmos_configdrive_builder/tmos_configdrive_builder.py)
+
+- name: Setting fact for vm hostname
+  ansible.builtin.set_fact:
+    ansible_host: "{{ BMIP }}"
+
 - name: Validate F5 specific configuration
   block:
     - name: Check if f5_config exists for F5 VM types
