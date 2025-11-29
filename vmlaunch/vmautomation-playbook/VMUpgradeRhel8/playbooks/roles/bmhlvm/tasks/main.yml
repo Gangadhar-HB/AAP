@@ -10,7 +10,7 @@
       virsh domblklist {{ vm_name }} | awk 'NR > 2  {print $2} '  | grep podmanstorage
   register: bmlvm
   become: yes
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
   changed_when: false
   failed_when: false
 
@@ -18,7 +18,7 @@
   shell: "lvs | grep -iw {{ vm_name }}_{{ lv_name }}"
   register: lvmpodman
   become: yes
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
   changed_when: false
   failed_when: false
 
@@ -26,7 +26,7 @@
 - name: print o/p of lvm volume
   debug:
      msg: "{{ bmlvm.stdout }} is the output}}"
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 
 - name: Extract and convert to integer
@@ -34,20 +34,20 @@
      LV_SIZE=`lvs -a -o name,lv_size vg01 --units g| grep -w 'kpool' |tr -d "<" | awk '{print $2}'`
      echo $LV_SIZE | awk -F'[^0-9]' '{print $1}'
   register: result_integer
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - debug:
     var: result_integer.stdout | int
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - name: getting vgs space with set_fact
   set_fact:
     vgsspace: "{{ result_integer.stdout | int  }}"
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 
 - debug: var=vgsspace
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 
 - name: Creating lvm volume on Baremetal Host
@@ -55,25 +55,25 @@
   command: /sbin/lvcreate --wipesignatures y --virtualsize {{ lv_size }} -n {{ vm_name }}_{{ lv_name }} --thin vg01/kpool
   register: lvcreate
   become: yes
-  delegate_to: "{{ BMIP }}" and bmlvm.stdout == "" and lvmpodman.stdout == ""
+  when: ansible_host == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == ""
 
 - debug: var=lvcreate.stdout
-  delegate_to: "{{ BMIP }}" and bmlvm.stdout == ""
+  when: ansible_host == BMIP and bmlvm.stdout == ""
 
 - name: disk device name list
   set_fact:
     disk_device: [ "sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg" ]
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 
 - name: disk device scsci unit number
   set_fact:
     disk_unit_num: [ "0", "1", "2", "3", "4", "5" ]
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - fail:
     msg: "{{ vm_name }}_{{ lv_name }} already exists...."
-  delegate_to: "{{ BMIP }}" and bmlvm.stdout == "" and lvmpodman.stdout == "" and lvcreate.rc != 0
+  when: ansible_host == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == "" and lvcreate.rc != 0
 
 
 
@@ -83,7 +83,7 @@
 
   become: yes
   register: disk_number
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - debug: var=disk_number.stdout
 
@@ -91,17 +91,17 @@
   command: sudo /usr/bin/dd if=/dev/zero of=/dev/vg01/{{ vm_name }}_{{ lv_name }} bs=1024 count=1000 conv=notrunc
   become: yes
   register: vm_dd
-  delegate_to: "{{ BMIP }}" and bmlvm.stdout == ""
+  when: ansible_host == BMIP and bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "/dev/vg01/{{ vm_name }}_{{ lv_name }}"
-  delegate_to: "{{ BMIP }}" and bmlvm.stdout == ""
+  when: ansible_host == BMIP and bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "{{ bmlvm.stdout }}"
-  delegate_to: "{{ BMIP }}" and bmlvm.stdout != ""
+  when: ansible_host == BMIP and bmlvm.stdout != ""
 
 
 - name: Attach lvm partition for the VM
@@ -109,16 +109,16 @@
   become: yes
   register: lvm_disk_attach
   ignore_errors: true
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - debug: var=lvm_disk_attach.stdout
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - fail: msg=" sdz attach failed"
   failed_when:
         - lvm_disk_attach.rc != 0
         - "'target sdz already exists' not in lvm_disk_attach.stderr"
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 
 
@@ -128,7 +128,7 @@
   become: yes
   register: diskunitnumber
 
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - debug: var=diskunitnumber.stdout
 
@@ -138,7 +138,7 @@
      virsh domblklist {{ vm_name }} | awk 'NR>1 {print $1}' | grep -ie "sd" | tail -n1
   become: yes
   register: disk_device_name
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - debug: var=disk_device_name.stdout
 
@@ -146,13 +146,13 @@
 - name: getting scsci unit number
   set_fact:
     disk_scsci_num: "{{ diskunitnumber.stdout }}"
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 
 - name: getting baremetal disk name
   set_fact:
     disk_name: "{{ disk_device_name.stdout }}"
-  delegate_to: "{{ BMIP }}"
+  when: ansible_host == BMIP
 
 - name: checking /var/lib/containers exist or not
   command: mountpoint -q /var/lib/containers
