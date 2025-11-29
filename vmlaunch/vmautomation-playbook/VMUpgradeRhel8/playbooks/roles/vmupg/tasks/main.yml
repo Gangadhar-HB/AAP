@@ -136,12 +136,20 @@
     when: os_partition.stdout.find(".qcow2") != -1
     any_errors_fatal: true
 
-  - name: Launching VM with block storage
-    include_role:
-      name: vmrelaunch_blockstorage
-    delegate_to: "{{ BMIP }}"
-    when: os_partition.stdout.find(".qcow2") == -1
+#  - name: Launching VM with block storage
+#    include_role:
+#      name: vmrelaunch_blockstorage
+#    delegate_to: "{{ BMIP }}"
+#    when: os_partition.stdout.find(".qcow2") == -1
   
+  - block:
+    - name: Launch VM Block Storage
+      include_role:
+        name: vmrelaunch_blockstorage
+    delegate_to: "{{ BMIP }}"
+    run_once: true
+    when: os_partition.stdout.find(".qcow2") == -1
+
   - block:
     - name: start VM
       command:  virsh -c qemu:///system start {{ vm_name }}
@@ -284,7 +292,7 @@
       ignore_errors: true
   
     - debug: var=rhel79_8osrelease
-    
+
     - debug: msg="VM Upgrade success"
     when:
     - UpgradeType != 10
