@@ -30,9 +30,8 @@
   - name: Fail if QCOW2 image check failed
     ansible.builtin.fail:
       msg: "QCOW2 image check failed! rc={{ qcow_check.rc }} stderr={{ qcow_check.stderr }}"
-    when: 
-      - 'ansible_host == BMIP'
-      - qcow_check.rc != 0
+    delegate_to: "{{ BMIP }}"
+    when: qcow_check.rc != 0
 
   - name: Running backup script before shutting down
     include_role:
