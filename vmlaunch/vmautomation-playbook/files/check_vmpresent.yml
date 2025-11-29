@@ -4,7 +4,7 @@
   community.libvirt.virt:
     command: list_vms
   register: vm_list
-#  delegate_to: "{{ BMIP }}"
+  delegate_to: "{{ BMIP }}"
 
 - name: Add VM to already_present list if it exists
   ansible.builtin.set_fact:
