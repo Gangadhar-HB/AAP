@@ -1,67 +1,74 @@
 ---
 
-- name: Setting fact for vm hostname
-  ansible.builtin.set_fact:
-    ansible_host: "{{ BMIP }}"
+# ------------------------------------------------------------
+# Check if thin pool "kpool" exists
+# ------------------------------------------------------------
+- name: Get LVM volumes with devices column
+  ansible.builtin.command:
+    cmd: lvs -a -o lv_name,lv_size,devices --units g --nosuffix
+  register: lvs_output
 
-# ----------------------------------------------
-# Gather only LVM facts
-# ----------------------------------------------
-- name: Gather LVM information
-  ansible.builtin.setup:
-    gather_subset:
-      - '!all'
-      - '!min'
-      - hardware
-    filter: ansible_lvm
-# ----------------------------------------------
-# Determine whether kpool exists
-# ----------------------------------------------
-- name: Check if thin pool kpool already exists
+- name: Extract kpool LV line
   ansible.builtin.set_fact:
-    has_kpool: "{{ 'kpool' in ansible_lvm.lvs }}"
-# ----------------------------------------------
-# If thin pool exists — get its size
-# ----------------------------------------------
-- name: Extract existing thin pool size (MB)
+    kpool_line: "{{ lvs_output.stdout_lines | select('search', '^kpool ') | list | first | default('') }}"
+
+- name: Determine if kpool exists
   ansible.builtin.set_fact:
-    thinPoolsize: "{{ (ansible_lvm.lvs['kpool'].size_g | float * 1024) | int }}"
-  when: has_kpool
-# ----------------------------------------------
-# If thinpool does not exist — calculate free space
-# ----------------------------------------------
-- name: Extract VG free space (MB)
-  ansible.builtin.set_fact:
-    freespace_mb: "{{ ansible_lvm.vgs[vg_name].free_g | float * 1024 }}"
-  when: not has_kpool
-# ----------------------------------------------
-# Calculate new thinpool size = % of free space
-# ----------------------------------------------
-- name: Calculate new thin pool size (MB)
-  ansible.builtin.set_fact:
-    new_thinpoolsize: >-
-      {{ (ansible_lvm.vgs[vg_name].free_g | float * 1024 * thinpool_BM / 100) | int }}
-  when: not has_kpool
-# ----------------------------------------------
-# Create thin pool using module
-# ----------------------------------------------
-- name: Create thin pool LV
-  community.general.lvol:
-    vg: "{{ vg_name }}"
-    lv: kpool
-    size: "{{ new_thinpoolsize }}m"
-    opts: --type thin-pool
-  when: not has_kpool and new_thinpoolsize|int < freespace_mb|int
-# ----------------------------------------------
-# Fail gracefully if no free space
-# ----------------------------------------------
-- name: Fail if free space is insufficient
-  ansible.builtin.fail:
-    msg: "Not enough space to create thin pool kpool in VG {{ vg_name }}"
-  when: not has_kpool and new_thinpoolsize|int >= freespace_mb|int
-# ----------------------------------------------
-# Final fact output for downstream plays
-# ----------------------------------------------
-- name: Set final thin pool size fact
-  ansible.builtin.set_fact:
-    thinPoolsize: "{{ thinPoolsize | default(new_thinpoolsize) }}"
+    hasKpool: "{{ kpool_line != '' }}"
+
+# ------------------------------------------------------------
+# Existing thin pool - extract size
+# ------------------------------------------------------------
+- block:
+
+    - name: Extract thin pool size (numeric)
+      ansible.builtin.set_fact:
+        thinPoolsize: "{{ (kpool_line.split()[1] | float) * 1024 | int }}"
+        # lvs output has size in GB, convert to MB
+
+  when: hasKpool
+
+# ------------------------------------------------------------
+# Thin pool NOT present - compute new size & create
+# ------------------------------------------------------------
+- block:
+
+    - name: Get VG details
+      ansible.builtin.command:
+        cmd: vgdisplay -c {{ vg_name | default('vg01') }}
+      register: vginfo
+
+    - name: Extract free space in MB
+      ansible.builtin.set_fact:
+        freespace_mb: >-
+          {{
+            (
+              (vginfo.stdout.split(':')[15] | int)   # free PE count
+              * 4096 / 1024 / 1024                   # convert PE → MB
+            ) | int
+          }}
+
+    - name: Calculate desired thinpool size (default 80%)
+      ansible.builtin.set_fact:
+        new_thinpoolsize_mb: >-
+          {{
+            (
+              freespace_mb * (thinpool_BM | default(80) | int) / 100
+            ) | int
+          }}
+
+    - name: Create thin pool if space available
+      ansible.builtin.command:
+        cmd: >
+          /usr/local/bin/manage_kodiak_thin_pool.sh
+          -s {{ new_thinpoolsize_mb }}
+          -v {{ vg_name | default('vg01') }}
+          POOL kpool
+      when: new_thinpoolsize_mb < freespace_mb
+      become: true
+
+    - name: Register new thin pool size
+      ansible.builtin.set_fact:
+        thinPoolsize: "{{ new_thinpoolsize_mb }}"
+
+  when: not hasKpool
