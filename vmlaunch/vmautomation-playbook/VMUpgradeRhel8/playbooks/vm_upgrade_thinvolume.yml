@@ -7,6 +7,7 @@
 - name: VM re-launching on Bare Metal host with existing thin volume
   hosts: all
   become: true
+  strategy: free
 
   tasks:
   
