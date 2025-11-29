@@ -38,8 +38,6 @@
       name: container_recover_backup
     vars:
       parent_role_name: vmupg
-    when: 
-
 
   - name: creating running_container.dat file with running containers
     command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat 
