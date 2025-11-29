@@ -1,29 +1,26 @@
 ---
 - name: check the thin pool is present or not
-  ansible.builtin.command: 
-    cmd: "lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
+  shell: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
+  register: hasKpool
+
+- name: check the thin pool is present or not
+  ansible.builtin.command: "lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
   register: hasKpool
   become: true
 
 - block:
    - name: get the thinpool unit
-     ansible.builtin.command: 
-      cmd: "lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
+     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
      register: kpoolsize_unit
-     become: true
 
    - name: check the thin pool size
-     ansible.builtin.command: 
-       cmd: "lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
+     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
      register: kpoolsize_tb
-     become: true
      when: kpoolsize_unit.stdout == "t"
 
    - name: check the thin pool size
-     ansible.builtin.command: 
-       cmd: "lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
+     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
      register: kpoolsize_gb
-     become: true
      when: kpoolsize_unit.stdout == "g"
 
 
@@ -40,21 +37,18 @@
 
 - block:
    - name: get the free space
-     ansible.builtin.command: 
-       cmd: "/usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
+     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
      register: freespace
-     become: true
 
 
    - name: "calculate the 80 percent of free space"
-     ansible.builtin.command: 
-       cmd: "/usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
+     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
      register: new_thinpoolsize
-     become: true
+
+
 
    - name: check the free space and create thin pool if not created
-     ansible.builtin.command: 
-       cmd: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
+     shell: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
      when: hasKpool.stdout == '' and ( new_thinpoolsize.stdout | int ) < ( freespace.stdout | int )
      become: true
      become_user: root
@@ -65,3 +59,12 @@
 
   when: hasKpool.stdout == ''
 
+#- name: Execute role
+#  include_tasks: files/execute_roles.yml
+#  args:
+#    apply:
+#      delegate_to: "{{ item.hostip }}"
+#      run_once: true
+#  with_items: "{{ vms }}"
+#  loop_control:
+#    loop_var: item
