@@ -164,6 +164,7 @@
   changed_when: False
 
 - debug: var=volume_stat.stdout
+- debug: var=volume_stat
 
 - name: getting newdisk name on VM
   shell: >
