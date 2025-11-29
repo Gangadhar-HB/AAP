@@ -75,7 +75,7 @@
     - name: Create dynamic Jinja2 templates
       ansible.builtin.copy:
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
-        mode: '0644'
+        mode: '0664'
         content: |
           {% for key, value in vm.vm_partition.items() %}
           {% set clean_key = key | regex_replace('_size$', '') %}
