@@ -77,17 +77,18 @@
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
         mode: '0664'
         content: |
-          {% for key, value in vm.vm_partition.items() %}
-          {% set clean_key = key | regex_replace('_size$', '') %}
-          {{ key }}={{ value }}G,/{{ clean_key }},0755,null,ext4,defaults
-          {% endfor %}
-
           var_log=1G,/var/log,0755,remap,ext4,defaults
           var_log_audit=1G,/var/log/audit,0750,remap,ext4,defaults
           var_tmp=2G,/var/tmp,1777,remap,ext4,defaults,nosuid,nodev,noexec
           var_lib_docker=2G,/var/lib/docker,0700,remap,ext4,defaults
           home=1G,/home,0755,remap,ext4,defaults,nodev
           usr_local_etc=1G,/usr/local/etc,0755,remap,ext4,defaults
+          containers=1G,/var/lib/containers,0755,remap,xfs,defaults
+          {% for key, value in vm.vm_partition.items() %}
+          {% set clean_key = key | regex_replace('_size$', '') %}
+          {{ key }}={{ value }}G,/{{ clean_key }},0755,null,ext4,defaults
+          {% endfor %}
+
       loop: "{{ vms }}"
       loop_control:
         loop_var: vm
