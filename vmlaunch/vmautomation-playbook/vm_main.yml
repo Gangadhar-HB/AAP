@@ -38,6 +38,7 @@
             - "'F5' not in item.vm_type"
             - "item.name not in already_present"
             - "vm_to_rerun is not defined or vm_to_rerun == item.name"
+            
         - name: Generate INI files
           ansible.builtin.include_role:
             name: create_ini
