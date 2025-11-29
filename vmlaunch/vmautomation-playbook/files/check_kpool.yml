@@ -7,6 +7,7 @@
   ansible.builtin.command:
     cmd: lvs -a -o lv_name,lv_size,devices --units g --nosuffix
   register: lvs_output
+  become: true
 
 - name: Extract kpool LV line
   ansible.builtin.set_fact:
@@ -37,6 +38,7 @@
       ansible.builtin.command:
         cmd: vgdisplay -c {{ vg_name | default('vg01') }}
       register: vginfo
+      become: true
 
     - name: Extract free space in MB
       ansible.builtin.set_fact:

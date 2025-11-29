@@ -48,7 +48,6 @@
           loop: "{{ vms }}"
           loop_control:
             loop_var: item
-          become: true
           when:
             - "item.name not in already_present"
             - "vm_to_rerun is not defined or vm_to_rerun == item.name"
