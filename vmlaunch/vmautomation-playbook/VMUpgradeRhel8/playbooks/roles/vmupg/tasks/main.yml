@@ -8,17 +8,16 @@
   - name: Read VM Mem allocated
     shell: free -m | awk 'FNR==2 {print $2}'
     register: total_mem
-    when: 'ansible_host != BMIP'
 
   - name: remove older qcow2 files
     shell: rm -f /home/autoinstall/*.qcow2
     become: yes
     ignore_errors: true
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
 
   - name: copy qcow2 to Baremetal host
     copy: src="{{ qcow2 }}" dest="/home/autoinstall" mode="0755"
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
     any_errors_fatal: true
 
   - name: Verify QCOW2 image checksum
@@ -26,7 +25,7 @@
       cmd: qemu-img check /home/autoinstall/{{ qcow2_name }}
     register: qcow_check
     ignore_errors: yes
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
 
   - name: Fail if QCOW2 image check failed
     ansible.builtin.fail:
@@ -40,63 +39,55 @@
       name: container_recover_backup
     vars:
       parent_role_name: vmupg
-    when: ansible_host != BMIP
+    when: 
 
 
   - name: creating running_container.dat file with running containers
-    command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat
-    when: ansible_host != BMIP
+    command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat 
     become: yes
     become_user: root
 
   - name: taking backup of rhel79 files
     include_role:
       name: container_upgrade
-    when: ansible_host != BMIP
 
   - name: remove docker pool which is unused
     include_role:
       name: remove_docker_pool
-    when: ansible_host != BMIP
-
 
   - name: check whether bsckup exist
     stat:
       path: /DGdata/rhel79containerdat/running_container.dat
     register: dat_exist
-    when: ansible_host != BMIP
     become: yes
     become_user: root
 
   - fail: msg="Backup didnot happen"
-    when: ansible_host != BMIP and dat_exist.stat.exists == False
+    when:  and dat_exist.stat.exists == False
     any_errors_fatal: true
 
 
   - name: copy authorized_keys to /DGdata
     shell: "cp -prf /home/autoinstall/.ssh/authorized_keys /DGdata/"
-    when: ansible_host != BMIP
     ignore_errors: true
     become: yes
     become_user: root
 
   - name: Writing backup state on VM as OK
     command: /bin/echo "OK" > /usr/local/etc/vm_config_state.txt
-    when: ansible_host != BMIP
     become: yes
     become_user: root
 
   - name: Read VM Mem allocated
     shell: free -m | awk 'FNR==2 {print $2}'
     register: total_mem
-    when: 'ansible_host != BMIP'
     become: yes
     become_user: root
 
   - name: Shutdown VM
     command: virsh -c qemu:///system shutdown {{ vm_name }}
     register: vm_shut
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
     any_errors_fatal: true
 
   - name: check VM state
@@ -105,23 +96,24 @@
     until: vm_check.stdout.find("shut off") != -1
     retries: 20
     delay: 30
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
     ignore_errors: true
 
   - debug: var=vm_check
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
     ignore_errors: true
 
   - name: Force stop VM if not stopped
     command:  virsh -c qemu:///system destroy {{ vm_name }}
     register: destroy_vm
-    when: ansible_host == BMIP and vm_check.stdout.find("shut off") == -1
+    delegate_to: "{{ BMIP }}"
+    when: vm_check.stdout.find("shut off") == -1
     ignore_errors: true
 
   - name: check available ram
     shell: free -m | awk 'FNR==2 {print $NF}'
     register: host_free_mem
-    when: 'ansible_host == BMIP'
+    delegate_to: "{{ BMIP }}"
 
   - name: Starting VM since memory is not available
     command: virsh -c qemu:///system start {{ vm_name }}
@@ -134,31 +126,32 @@
   - name: Finding os partition
     shell: "virsh -c qemu:///system domblklist {{ vm_name }} | awk 'NR>2 {print $2}' | head -n 1"
     register: os_partition
-    when: ansible_host == BMIP
+    delegate_to: "{{ BMIP }}"
     any_errors_fatal: true
 
   - name: copying image to /var/lib/libvirt/images/
     command: cp -pvf /home/autoinstall/{{ qcow2_name }} {{ os_partition.stdout }}
     register: copy_qcow2_libvirt
-    when: ansible_host == BMIP and os_partition.stdout.find(".qcow2") != -1
+    delegate_to: "{{ BMIP }}"
+    when: os_partition.stdout.find(".qcow2") != -1
     any_errors_fatal: true
 
   - name: Launching VM with block storage
     include_role:
       name: vmrelaunch_blockstorage
-    when: ansible_host == BMIP and os_partition.stdout.find(".qcow2") == -1
+    delegate_to: "{{ BMIP }}"
+    when: os_partition.stdout.find(".qcow2") == -1
   
   - block:
     - name: start VM
       command:  virsh -c qemu:///system start {{ vm_name }}
       register: start_vm
-      when: 'ansible_host == BMIP'
+      delegate_to: "{{ BMIP }}"
   
     - debug: var=start_vm
-      when: 'ansible_host == BMIP'
+      delegate_to: "{{ BMIP }}"
   
     - meta: clear_host_errors
-      when: ansible_host != BMIP
 
     - name: Remove target system from local known_hosts file
       become: no
@@ -176,7 +169,6 @@
         timeout: 1800
       connection: local
       any_errors_fatal: true
-      when: 'ansible_host != BMIP'
       vars:
         ansible_python_interpreter: /usr/bin/python3
   
@@ -197,7 +189,6 @@
       with_items:
         - 'Match user autoinstall'
         - 'PasswordAuthentication yes'
-      when: ansible_host != BMIP
       become: yes
       become_user: root
   
@@ -206,7 +197,6 @@
         name: sshd
         state: restarted
         enabled: yes
-      when: ansible_host != BMIP
       become: yes
       become_user: root
   
@@ -214,7 +204,6 @@
       shell: lvremove -f /dev/mapper/vg01-usr_share
       when: verify_share.rc ==  0
       ignore_errors: true
-      when: ansible_host != BMIP
       become: yes
       become_user: root
   
@@ -224,20 +213,17 @@
         regexp: '.*/usr/share.*'
         state: absent
       ignore_errors: true
-      when: ansible_host != BMIP
       become: yes
       become_user: root
   
     - command: cat /usr/local/etc/running_container.dat
       register: running_list
       ignore_errors: true
-      when: 'ansible_host != BMIP'
       become: yes
       become_user: root
   
     - debug:
         msg: "{{ running_list }}"
-      when: 'ansible_host != BMIP'
       become_user: root
   
   
@@ -247,14 +233,12 @@
       until: podman_status.rc == 0
       retries: 12
       delay: 10
-      when: ansible_host != BMIP
       ignore_errors: true
       become: yes
       become_user: root
   
     - fail: msg="podman service is not started"
-      when:
-        - ansible_host != BMIP
+        - 
         - podman_status.rc != 0
         - ansible_os_family == "RedHat"
         - ansible_distribution_major_version|int == "8"
@@ -264,7 +248,6 @@
   
     - name: running vm_misc_save_restore.sh script on VM
       command: /DGdata/Software/tps_scripts/vm_misc_save_restore.sh -d 2 RESTORE
-      when: ansible_host != BMIP
       register: backup_vm_files
       any_errors_fatal: true
       become: yes
@@ -273,14 +256,13 @@
     - name: checking id sssd
       command: id sssd
       register: sssd_result
-      when: ansible_host != BMIP
       ignore_errors: true
       become: yes
       become_user: root
   
     - name: create sssd directory on VM for sssd
       file: path=/var/log/sssd state=directory mode=750 group=sssd owner=sssd
-      when: ansible_host != BMIP and sssd_result.rc == 0
+      when:  and sssd_result.rc == 0
       ignore_errors: true
       become: yes
       become_user: root
@@ -288,7 +270,6 @@
     - name: Check for latest patch
       command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
       register: kodiak_vm_upg_patch
-      when: 'ansible_host != BMIP'
       failed_when: kodiak_vm_upg_patch.stdout == ""
       any_errors_fatal: true
       become: yes
@@ -301,11 +282,9 @@
         echo "$rhel_ver"
       register: rhel79_8osrelease
       ignore_errors: true
-      when: 'ansible_host != BMIP'
   
     - debug: var=rhel79_8osrelease
-  
-  
+    
     - debug: msg="VM Upgrade success"
     when:
     - UpgradeType != 10
