@@ -25,7 +25,7 @@
         name: bmhlvm
     tags:
     - bmhlvm
-        loop: "{{ vms }}"
+    loop: "{{ vms }}"
     loop_control:
       loop_var: vm
     vars:
@@ -35,7 +35,7 @@
         name: vmupg
     tags:
     - vmupg
-        loop: "{{ vms }}"
+    loop: "{{ vms }}"
     loop_control:
       loop_var: vm
     vars:
