@@ -75,8 +75,7 @@
 
     - name: Wait for VM initialization
       ansible.builtin.wait_for:
-        timeout: 300
-      delegate_to: "{{ ansible_host }}"
+        timeout: 180
       loop: "{{ successful_vms }}"
       run_once: true
       when: successful_vms | length > 0
