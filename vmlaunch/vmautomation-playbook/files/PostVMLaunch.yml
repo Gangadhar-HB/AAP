@@ -1,8 +1,4 @@
 ---
-- name: Setting fact for vm hostname
-  ansible.builtin.set_fact:
-    ansible_host: "{{ inventory_hostname }}"
-
 - name: Wait for SSH access on VM
   ansible.builtin.wait_for:
     host: "{{ vm_ip }}"

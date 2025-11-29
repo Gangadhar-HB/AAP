@@ -38,7 +38,7 @@
             - "'F5' not in item.vm_type"
             - "item.name not in already_present"
             - "vm_to_rerun is not defined or vm_to_rerun == item.name"
-            
+
         - name: Generate INI files
           ansible.builtin.include_role:
             name: create_ini
@@ -78,15 +78,6 @@
       loop: "{{ successful_vms }}"
       run_once: true
       when: successful_vms | length > 0
-
-    - name: Add first VM to ipa_server 
-      ansible.builtin.add_host:
-        name: "{{ vm.networkInterface[0].ipaddress.split('/')[0] }}"
-        groups: vm_ips
-      loop: "{{ vms }}"
-      loop_control:
-        loop_var: vm
-      run_once: true
 
     - name: Post VM configuration
       ansible.builtin.include_tasks: files/PostVMLaunch.yml
