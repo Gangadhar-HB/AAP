@@ -4,67 +4,52 @@
   ansible.builtin.set_fact:
     ansible_host: "{{ BMIP }}"
 
-- name: check the thin pool is present or not
-  shell: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
-  register: hasKpool
+- name: Check if kpool thin pool exists
+  community.general.lvol:
+    lv: kpool
+    vg: "{{ vg_name | default('vg01') }}"
+    state: present
+  register: kpool_check
+  failed_when: false
+  check_mode: true
+
+- name: Get LVM facts
+  community.general.lvg_facts:
+  register: lvg_facts
 
 - block:
-   - name: get the thinpool unit
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print substr($4, length($4)) }'"
-     register: kpoolsize_unit
+   - name: Get kpool size information
+     ansible.builtin.set_fact:
+       kpool_info: "{{ lvg_facts.ansible_lvm.lvs.kpool }}"
+     when: "'kpool' in lvg_facts.ansible_lvm.lvs"
 
-   - name: check the thin pool size
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print $4 }' | tr -cd '[:alnum:].\n' | awk '{ print int($1*1024) }'"
-     register: kpoolsize_tb
-     when: kpoolsize_unit.stdout == "t"
+   - name: Convert kpool size to GB
+     ansible.builtin.set_fact:
+       thinPoolsize: "{{ (kpool_info.size_g | float * 1024) | int if kpool_info.size_g is defined else kpool_info.size_g | default(0) }}"
 
-   - name: check the thin pool size
-     shell: "sudo lvs -a -o +devices | grep -w '  kpool' | awk '{ print int($4)}'"
-     register: kpoolsize_gb
-     when: kpoolsize_unit.stdout == "g"
-
-
-   - set_fact:
-      thinPoolsize:  "{{ kpoolsize_tb.stdout }}"
-     when: kpoolsize_unit.stdout == "t"
-
-   - set_fact:
-      thinPoolsize:  "{{ kpoolsize_gb.stdout }}"
-     when: kpoolsize_unit.stdout == "g"
-
-
-  when: hasKpool.stdout != ''
+  when: kpool_check.changed == false
 
 - block:
-   - name: get the free space
-     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }}  | cut -d':' -f16 | awk '{ print $1 * 4096}' | awk '{print $1/1024/1024}'"
-     register: freespace
+   - name: Get volume group facts
+     community.general.lvg_facts:
+     register: vg_facts
 
+   - name: Calculate free space and new thin pool size
+     ansible.builtin.set_fact:
+       freespace_gb: "{{ (vg_facts.ansible_lvm.vgs[vg_name | default('vg01')].free_g | float) }}"
+       new_thinpoolsize: "{{ ((vg_facts.ansible_lvm.vgs[vg_name | default('vg01')].free_g | float) * (thinpool_BM | default(80) | int) / 100) | int }}"
 
-   - name: "calculate the 80 percent of free space"
-     shell: "sudo /usr/sbin/vgdisplay -c {{ vg_name | default('vg01') }} | cut -d':' -f16 | awk '{print int(($1*4096/1024/1024)*{{ thinpool_BM | default(80) }}/100)}'"
-     register: new_thinpoolsize
-
-
-
-   - name: check the free space and create thin pool if not created
-     shell: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize.stdout }}  -v {{ vg_name | default('vg01') }} POOL kpool"
-     when: hasKpool.stdout == '' and ( new_thinpoolsize.stdout | int ) < ( freespace.stdout | int )
+   - name: Create thin pool if sufficient space available
+     ansible.builtin.command:
+       cmd: "/usr/local/bin/manage_kodiak_thin_pool.sh -s {{ new_thinpoolsize }}  -v {{ vg_name | default('vg01') }} POOL kpool"
+     when: new_thinpoolsize | int < freespace_gb | int
      become: true
      become_user: root
-     failed_when: ( new_thinpoolsize.stdout | int ) > ( freespace.stdout | int )
+     failed_when: new_thinpoolsize | int > freespace_gb | int
 
-   - set_fact:
-      thinPoolsize: "{{ new_thinpoolsize.stdout }}"
+   - name: Set thin pool size fact
+     ansible.builtin.set_fact:
+       thinPoolsize: "{{ new_thinpoolsize }}"
 
-  when: hasKpool.stdout == ''
+  when: kpool_check.changed == true
 
-#- name: Execute role
-#  include_tasks: files/execute_roles.yml
-#  args:
-#    apply:
-#      delegate_to: "{{ item.hostip }}"
-#      run_once: true
-#  with_items: "{{ vms }}"
-#  loop_control:
-#    loop_var: item
