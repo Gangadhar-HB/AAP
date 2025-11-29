@@ -11,7 +11,7 @@
 
   tasks:
   
-  - import_role:
+  - include_role:
         name: common
     tags:
     - validation
@@ -21,7 +21,7 @@
     vars:
       vm_name: "{{ vm.name }}"
   
-  - import_role:
+  - include_role:
         name: bmhlvm
     tags:
     - bmhlvm
@@ -31,7 +31,7 @@
     vars:
       vm_name: "{{ vm.name }}"
   
-  - import_role:
+  - include_role:
         name: vmupg
     tags:
     - vmupg
@@ -40,24 +40,3 @@
       loop_var: vm
     vars:
       vm_name: "{{ vm.name }}"
-  
-
-#  - name: Listing all docker images in /DGdata/Loads/docker_images/
-#    find: paths=/DGdata/Loads/docker_images patterns="*.tgz" recurse=no
-#    register: images_list
-#    when: group_vm in group_names
-#    ignore_errors: true
-#    tags:
-#    - imageloadtag
-
-#  - import_role:
-#        name: imageloadtag
-#    when: group_vm in group_names and images_list.files != []
-#    tags:
-#    - imageloadtag
-
-#  roles:
-#    - {role: 'common', tags: 'validation'}
-#    - {role: 'vmupg', tags: 'vmupg'}
-#    - {role: 'imageloadtag', tags: 'imagesloadtag'}
-
