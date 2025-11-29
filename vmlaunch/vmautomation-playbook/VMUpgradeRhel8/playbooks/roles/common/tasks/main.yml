@@ -22,12 +22,12 @@
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_check
   ignore_errors: true
-  when: ansible_host == BMIP
+  delegate_to: "{{ BMIP }}"
 
 - name: Adding autoinstall user into libvirt group
   command: usermod -a -G libvirt {{ upg_user }}
   register: usermod_autoinstall
-  when: ansible_host == BMIP and libvirt_check.rc != 0
+  delegate_to: "{{ BMIP }}" and libvirt_check.rc != 0
   become: yes
 
 - name: Check if polkit service exists
@@ -36,7 +36,7 @@
   register: polkit_status
   ignore_errors: yes
   become: yes
-  when: ansible_host == BMIP and libvirt_check.rc != 0
+  delegate_to: "{{ BMIP }}" and libvirt_check.rc != 0
 
 - name: Restart polkit service if it exists and is running
   ansible.builtin.systemd:
@@ -54,17 +54,17 @@
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_recheck
   any_errors_fatal: true
-  when: ansible_host == BMIP and libvirt_check.rc != 0
+  delegate_to: "{{ BMIP }}" and libvirt_check.rc != 0
 
 - name: Debug VM names on bare-metal hosts
   debug:
     msg: "Checking for VM : {{ vm_name }} on 2U host"
-  when: ansible_host == BMIP
+  delegate_to: "{{ BMIP }}"
 
 - name: check for VM on the 2U Host
   command: virsh -c qemu:///system dominfo {{ vm_name }}
   register: vm_check
-  when: ansible_host == BMIP
+  delegate_to: "{{ BMIP }}"
   failed_when: vm_check.rc == 1
   any_errors_fatal: true
 
