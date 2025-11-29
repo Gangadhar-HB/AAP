@@ -1,9 +1,10 @@
 ---
 
-# ------------------------------------------------------------
-# Check if thin pool "kpool" exists
-# ------------------------------------------------------------
-- name: Get LVM volumes with devices column
+#############################################################
+#  CHECK IF THIN POOL EXISTS
+#############################################################
+
+- name: Get LVM volumes (safe, no grep/awk)
   ansible.builtin.command:
     cmd: lvs -a -o lv_name,lv_size,devices --units g --nosuffix
   register: lvs_output
@@ -11,27 +12,31 @@
 
 - name: Extract kpool LV line
   ansible.builtin.set_fact:
-    kpool_line: "{{ lvs_output.stdout_lines | select('search', '^kpool ') | list | first | default('') }}"
+    kpool_line: "{{ lvs_output.stdout_lines
+                    | select('search', '^kpool\\b')
+                    | list
+                    | first
+                    | default('') }}"
 
 - name: Determine if kpool exists
   ansible.builtin.set_fact:
     hasKpool: "{{ kpool_line != '' }}"
 
-# ------------------------------------------------------------
-# Existing thin pool - extract size
-# ------------------------------------------------------------
+#############################################################
+#  EXISTING THIN POOL — GET SIZE
+#############################################################
 - block:
 
-    - name: Extract thin pool size (numeric)
+    - name: Extract thin pool size in MB
       ansible.builtin.set_fact:
-        thinPoolsize: "{{ (kpool_line.split()[1] | float) * 1024 | int }}"
-        # lvs output has size in GB, convert to MB
+        thinPoolsize: "{{ (kpool_line.split()[1] | float * 1024) | int }}"
+        # lvs output gives size in GB; converting to MB
 
   when: hasKpool
 
-# ------------------------------------------------------------
-# Thin pool NOT present - compute new size & create
-# ------------------------------------------------------------
+#############################################################
+#  THIN POOL MISSING — CREATE NEW THIN POOL
+#############################################################
 - block:
 
     - name: Get VG details
@@ -40,26 +45,19 @@
       register: vginfo
       become: true
 
-    - name: Extract free space in MB
+    - name: Extract free PEs from field 16
       ansible.builtin.set_fact:
-        freespace_mb: >-
-          {{
-            (
-              (vginfo.stdout.split(':')[15] | int)   # free PE count
-              * 4096 / 1024 / 1024                   # convert PE → MB
-            ) | int
-          }}
+        free_pe: "{{ vginfo.stdout.split(':')[15] | int }}"
 
-    - name: Calculate desired thinpool size (default 80%)
+    - name: Convert PE → MB
       ansible.builtin.set_fact:
-        new_thinpoolsize_mb: >-
-          {{
-            (
-              freespace_mb * (thinpool_BM | default(80) | int) / 100
-            ) | int
-          }}
+        freespace_mb: "{{ (free_pe * 4096 / 1024 / 1024) | int }}"
 
-    - name: Create thin pool if space available
+    - name: Calculate thin pool size (default 80%)
+      ansible.builtin.set_fact:
+        new_thinpoolsize_mb: "{{ (freespace_mb * (thinpool_BM | default(80) | int) / 100) | int }}"
+
+    - name: Create thin pool
       ansible.builtin.command:
         cmd: >
           /usr/local/bin/manage_kodiak_thin_pool.sh
@@ -69,7 +67,7 @@
       when: new_thinpoolsize_mb < freespace_mb
       become: true
 
-    - name: Register new thin pool size
+    - name: Set final thinPoolsize fact
       ansible.builtin.set_fact:
         thinPoolsize: "{{ new_thinpoolsize_mb }}"
 
