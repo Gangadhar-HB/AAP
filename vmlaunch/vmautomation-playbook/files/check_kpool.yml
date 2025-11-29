@@ -1,5 +1,5 @@
 ---
----
+
 - name: Setting fact for vm hostname
   ansible.builtin.set_fact:
     ansible_host: "{{ BMIP }}"
