@@ -5,19 +5,6 @@
 #
 ---
 
-#- name: check directory exist or not
-#  become: yes
-#  become_user: root
-#  any_errors_fatal: true
-#  when: inventory_hostname in groups[group_vm]
-#  file:
-#    path: "{{ item }}"
-#    state: absent
-#  loop:
-#    - /DGdata/rhel79servicefiles
-#    - /DGdata/rhel79containersini
-#    - /DGdata/rhel79containerdat
-
 - name: creating directory
   become: yes
   become_user: root
@@ -54,30 +41,11 @@
   with_items: "{{ copy_rhel79containerdat_status.files }}"
 
 
-#- name: finding from /usr/local/etc to /DGdata/rhel79containersini
-#  become: yes
-#  become_user: root
-#  find:
-#    paths: "/usr/local/etc/containers" 
-#    recurse: yes 
-#    patterns: "*.*"
-#  register: copy_rhel79containersini_status
-
-#- name: copying from /usr/local/etc to /DGdata/rhel79containersini
-#  become: yes
-#  become_user: root
-#  copy: 
-#    src: "{{ item.path }}" 
-#    dest: /DGdata/rhel79containersini
-#    remote_src: yes
-#  with_items: "{{ copy_rhel79containersini_status.files }}"
-
 - name: copying from /usr/local/etc to /DGdata/rhel79containersini
   become: yes
   become_user: root
   shell: yes | mv -f /usr/local/etc/containers/*.* /DGdata/rhel79containersini
   ignore_errors: true
-
 
 
 - name: finding from  /usr/local/etc to /DGdata/rhel79servicefiles

@@ -4,45 +4,21 @@
 # Motorola Solutions Confidential Restricted
 #
 ---
-#- name: copy certificate on VM
-#  copy:
-#    src: /DGdata/Loads/{{ certificate_domain }}.crt
-#    dest: /DGdata/Software/{{ certificate_domain }}.crt
-#    owner: root
-#    group: kodiakgroup
-#    mode: u=rw,g=r,o=r
-#  become: yes
-#  become_user: root
-#  when: "group_vm in group_names  and 'update-repo.kodiak.repo' not in certificate_domain"
-
-#- name: Updating with repo config file
-#  template:
-#    src: /DG/activeRelease/container/VMUpgrade/playbooks/roles/vmupg/templates/update_repo.repo.config.j2
-#    dest: "{{ item }}"
-#    owner: root
-#    group: kodiakgroup
-#    mode: u=rw,g=r,o=r
-#  with_items:
-#    - /DGdata/Software/update_repo.repo.config
-#    - /usr/local/etc/update_repo.repo.config
-#  when: group_vm in group_names
-#  become: yes
-#  become_user: root
 - block:
   - name: Read VM Mem allocated
     shell: free -m | awk 'FNR==2 {print $2}'
     register: total_mem
-    when: 'group_vm in group_names'
+    when: 'ansible_host != BMIP'
 
   - name: remove older qcow2 files
     shell: rm -f /home/autoinstall/*.qcow2
     become: yes
     ignore_errors: true
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
 
   - name: copy qcow2 to Baremetal host
     copy: src="{{ qcow2 }}" dest="/home/autoinstall" mode="0755"
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
     any_errors_fatal: true
 
   - name: Verify QCOW2 image checksum
@@ -50,13 +26,13 @@
       cmd: qemu-img check /home/autoinstall/{{ qcow2_name }}
     register: qcow_check
     ignore_errors: yes
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
 
   - name: Fail if QCOW2 image check failed
     ansible.builtin.fail:
       msg: "QCOW2 image check failed! rc={{ qcow_check.rc }} stderr={{ qcow_check.stderr }}"
     when: 
-      - 'group in group_names'
+      - 'ansible_host == BMIP'
       - qcow_check.rc != 0
 
   - name: Running backup script before shutting down
@@ -64,63 +40,63 @@
       name: container_recover_backup
     vars:
       parent_role_name: vmupg
-    when: group_vm in group_names
+    when: ansible_host != BMIP
 
 
   - name: creating running_container.dat file with running containers
     command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat
-    when: group_vm in group_names
+    when: ansible_host != BMIP
     become: yes
     become_user: root
 
   - name: taking backup of rhel79 files
     include_role:
       name: container_upgrade
-    when: group_vm in group_names
+    when: ansible_host != BMIP
 
   - name: remove docker pool which is unused
     include_role:
       name: remove_docker_pool
-    when: group_vm in group_names
+    when: ansible_host != BMIP
 
 
   - name: check whether bsckup exist
     stat:
       path: /DGdata/rhel79containerdat/running_container.dat
     register: dat_exist
-    when: group_vm in group_names
+    when: ansible_host != BMIP
     become: yes
     become_user: root
 
   - fail: msg="Backup didnot happen"
-    when: group_vm in group_names and dat_exist.stat.exists == False
+    when: ansible_host != BMIP and dat_exist.stat.exists == False
     any_errors_fatal: true
 
 
   - name: copy authorized_keys to /DGdata
     shell: "cp -prf /home/autoinstall/.ssh/authorized_keys /DGdata/"
-    when: group_vm in group_names
+    when: ansible_host != BMIP
     ignore_errors: true
     become: yes
     become_user: root
 
   - name: Writing backup state on VM as OK
     command: /bin/echo "OK" > /usr/local/etc/vm_config_state.txt
-    when: group_vm in group_names
+    when: ansible_host != BMIP
     become: yes
     become_user: root
 
   - name: Read VM Mem allocated
     shell: free -m | awk 'FNR==2 {print $2}'
     register: total_mem
-    when: 'group_vm in group_names'
+    when: 'ansible_host != BMIP'
     become: yes
     become_user: root
 
   - name: Shutdown VM
     command: virsh -c qemu:///system shutdown {{ vm_name }}
     register: vm_shut
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
     any_errors_fatal: true
 
   - name: check VM state
@@ -129,23 +105,23 @@
     until: vm_check.stdout.find("shut off") != -1
     retries: 20
     delay: 30
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
     ignore_errors: true
 
   - debug: var=vm_check
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
     ignore_errors: true
 
   - name: Force stop VM if not stopped
     command:  virsh -c qemu:///system destroy {{ vm_name }}
     register: destroy_vm
-    when: group in group_names and vm_check.stdout.find("shut off") == -1
+    when: ansible_host == BMIP and vm_check.stdout.find("shut off") == -1
     ignore_errors: true
 
   - name: check available ram
     shell: free -m | awk 'FNR==2 {print $NF}'
     register: host_free_mem
-    when: 'group in group_names'
+    when: 'ansible_host == BMIP'
 
   - name: Starting VM since memory is not available
     command: virsh -c qemu:///system start {{ vm_name }}
@@ -158,31 +134,31 @@
   - name: Finding os partition
     shell: "virsh -c qemu:///system domblklist {{ vm_name }} | awk 'NR>2 {print $2}' | head -n 1"
     register: os_partition
-    when: group in group_names
+    when: ansible_host == BMIP
     any_errors_fatal: true
 
   - name: copying image to /var/lib/libvirt/images/
     command: cp -pvf /home/autoinstall/{{ qcow2_name }} {{ os_partition.stdout }}
     register: copy_qcow2_libvirt
-    when: group in group_names and os_partition.stdout.find(".qcow2") != -1
+    when: ansible_host == BMIP and os_partition.stdout.find(".qcow2") != -1
     any_errors_fatal: true
 
   - name: Launching VM with block storage
     include_role:
       name: vmrelaunch_blockstorage
-    when: group in group_names and os_partition.stdout.find(".qcow2") == -1
+    when: ansible_host == BMIP and os_partition.stdout.find(".qcow2") == -1
   
   - block:
     - name: start VM
       command:  virsh -c qemu:///system start {{ vm_name }}
       register: start_vm
-      when: 'group in group_names'
+      when: 'ansible_host == BMIP'
   
     - debug: var=start_vm
-      when: 'group in group_names'
+      when: 'ansible_host == BMIP'
   
     - meta: clear_host_errors
-      when: group_vm in group_names
+      when: ansible_host != BMIP
 
     - name: Remove target system from local known_hosts file
       become: no
@@ -200,24 +176,11 @@
         timeout: 1800
       connection: local
       any_errors_fatal: true
-      when: 'group_vm in group_names'
+      when: 'ansible_host != BMIP'
       vars:
         ansible_python_interpreter: /usr/bin/python3
   
     - debug: msg="Waiting for containers to migrate and come up, will take max 5 minutes"
-  
-    #- name: Enabling password less
-    #  authorized_key:
-    #    user: autoinstall
-    #    state: present
-    #    key: "{{ lookup('file', '/root/.ssh/id_dsa.pub') }}"
-    #  register: pwd_status
-  
-    #- name: copying pub key to remote host
-    #  copy:
-    #    src: "/root/.ssh/id_dsa.pub"
-    #    dest: "/tmp/id_dsa.pub"
-    #  register: copying_dsa_pub
   
     - name: Ensure root .ssh directory exists
       file:
@@ -227,24 +190,6 @@
         group: root
         mode: '0700'
   
-    #- name: Enabling password less
-    #  shell: |
-    #    cat /tmp/id_dsa.pub >> ~/.ssh/authorized_keys
-    #  register: pwd_status
-  
-    #- name: Replacing back authorized_keys from /DGdata
-    #  copy:
-    #    src: /DGdata/authorized_keys
-    #    dest: /home/autoinstall/.ssh/
-    #    owner: autoinstall
-    #    group: kodiakgroup
-    #    mode: '0600'
-    #    remote_src: yes
-    #  when: group_vm in group_names
-    #  ignore_errors: true
-    #  become: yes
-    #  become_user: root
-  
     - name: update sshd
       lineinfile:
         path: /etc/ssh/sshd_config
@@ -252,7 +197,7 @@
       with_items:
         - 'Match user autoinstall'
         - 'PasswordAuthentication yes'
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       become: yes
       become_user: root
   
@@ -261,7 +206,7 @@
         name: sshd
         state: restarted
         enabled: yes
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       become: yes
       become_user: root
   
@@ -269,7 +214,7 @@
       shell: lvremove -f /dev/mapper/vg01-usr_share
       when: verify_share.rc ==  0
       ignore_errors: true
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       become: yes
       become_user: root
   
@@ -279,20 +224,20 @@
         regexp: '.*/usr/share.*'
         state: absent
       ignore_errors: true
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       become: yes
       become_user: root
   
     - command: cat /usr/local/etc/running_container.dat
       register: running_list
       ignore_errors: true
-      when: 'group_vm in group_names'
+      when: 'ansible_host != BMIP'
       become: yes
       become_user: root
   
     - debug:
         msg: "{{ running_list }}"
-      when: 'group_vm in group_names'
+      when: 'ansible_host != BMIP'
       become_user: root
   
   
@@ -302,25 +247,14 @@
       until: podman_status.rc == 0
       retries: 12
       delay: 10
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       ignore_errors: true
       become: yes
       become_user: root
   
-  
-    #- name: check for docker service to be up
-    #  command: systemctl is-active docker
-    #  register: docker_status
-    #  until: docker_status.rc == 0
-    #  retries: 12
-    #  delay: 10
-    #  when: group_vm in group_names
-    #  ignore_errors: true
-    #  become: yes
-  
     - fail: msg="podman service is not started"
       when:
-        - group_vm in group_names
+        - ansible_host != BMIP
         - podman_status.rc != 0
         - ansible_os_family == "RedHat"
         - ansible_distribution_major_version|int == "8"
@@ -328,53 +262,9 @@
       any_errors_fatal: true
   
   
-    #- fail: msg="docker service is not started"
-    #  when:
-    #    - group_vm in group_names
-    #    - docker_status.rc != 0
-    #    - ansible_os_family == "RedHat"
-    #    - ansible_distribution_major_version|int == "7"
-    #    - ansible_system == "Linux"
-    #  any_errors_fatal: true
-  
-  
-  
-    #- name: check for podman containers status if running_container.dat is exists
-    #  shell: podman ps --format {{ '{{' }}.Names{{ '}}' }}
-    #  register: podmancontainer_status
-    #  until: podmancontainer_status.stdout_lines == running_list.stdout_lines
-    #  retries: 10
-    #  delay: 30
-    #  when:
-    #   - group_vm in group_names
-    #   - ansible_os_family == "RedHat"
-    #   - ansible_distribution_major_version|int == "8"
-    #   - ansible_system == "Linux"
-    # any_errors_fatal: true
-    # become: yes
-    # become_user: root
-  
-  
-    #- name: check for docker containers status if running_container.dat is exists
-    #  shell: docker ps --format {{ '{{' }}.Names{{ '}}' }}
-    #  register: dockercontainer_status
-    #  until: dockercontainer_status.stdout_lines == running_list.stdout_lines
-    #  retries: 10
-    #  delay: 30
-    #  when:
-    #    - group_vm in group_names
-    #    - running_list.rc == 0
-    #    - ansible_os_family == "RedHat"
-    #    - ansible_distribution_major_version|int == "7"
-    #    - ansible_system == "Linux"
-    #  any_errors_fatal: true
-    #  become: yes
-    #  become_user: root
-  
-  
     - name: running vm_misc_save_restore.sh script on VM
       command: /DGdata/Software/tps_scripts/vm_misc_save_restore.sh -d 2 RESTORE
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       register: backup_vm_files
       any_errors_fatal: true
       become: yes
@@ -383,14 +273,14 @@
     - name: checking id sssd
       command: id sssd
       register: sssd_result
-      when: group_vm in group_names
+      when: ansible_host != BMIP
       ignore_errors: true
       become: yes
       become_user: root
   
     - name: create sssd directory on VM for sssd
       file: path=/var/log/sssd state=directory mode=750 group=sssd owner=sssd
-      when: group_vm in group_names and sssd_result.rc == 0
+      when: ansible_host != BMIP and sssd_result.rc == 0
       ignore_errors: true
       become: yes
       become_user: root
@@ -398,7 +288,7 @@
     - name: Check for latest patch
       command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
       register: kodiak_vm_upg_patch
-      when: 'group_vm in group_names'
+      when: 'ansible_host != BMIP'
       failed_when: kodiak_vm_upg_patch.stdout == ""
       any_errors_fatal: true
       become: yes
@@ -411,42 +301,11 @@
         echo "$rhel_ver"
       register: rhel79_8osrelease
       ignore_errors: true
-      when: 'group_vm in group_names'
+      when: 'ansible_host != BMIP'
   
     - debug: var=rhel79_8osrelease
   
   
-  
-    #- name: check for podman containers status
-    #  command: podman ps -f status=running --format {{ '{{' }}.Names{{ '}}' }}
-    #  register: podmancontainer_running_status
-    #  when:
-    #    - group_vm in group_names
-    #    - rhel79_8osrelease.stdout is match("8.*")
-    #  any_errors_fatal: true
-    #  become: yes
-    #  become_user: root
-  
-  
-    #- name: podman running containers list
-    #  become: yes
-    #  become_user: root
-    #  debug:
-    #    msg: "{{ item }}"
-    #  when:
-    #    - group_vm in group_names
-    #    - rhel79_8osrelease.stdout is match("8.*")
-    #  with_items:
-    #    - "{{ podmancontainer_running_status.stdout.split('\n') }}"
-  
     - debug: msg="VM Upgrade success"
     when:
     - UpgradeType != 10
-
-  #rescue:
-  #  - name: Reboot the system due to failure
-  #    command: reboot
-  #    become: yes
-  #    become_user: root
-  #    ignore_errors: true
-  #    when: 'group in group_names'
