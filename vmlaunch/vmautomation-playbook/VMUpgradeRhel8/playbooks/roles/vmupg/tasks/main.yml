@@ -60,7 +60,7 @@
     become_user: root
 
   - fail: msg="Backup didnot happen"
-    when:  and dat_exist.stat.exists == False
+    when: dat_exist.stat.exists == False
     any_errors_fatal: true
 
 
@@ -132,12 +132,6 @@
     delegate_to: "{{ BMIP }}"
     when: os_partition.stdout.find(".qcow2") != -1
     any_errors_fatal: true
-
-#  - name: Launching VM with block storage
-#    include_role:
-#      name: vmrelaunch_blockstorage
-#    delegate_to: "{{ BMIP }}"
-#    when: os_partition.stdout.find(".qcow2") == -1
   
   - block:
     - name: Launch VM Block Storage
@@ -266,7 +260,7 @@
   
     - name: create sssd directory on VM for sssd
       file: path=/var/log/sssd state=directory mode=750 group=sssd owner=sssd
-      when:  and sssd_result.rc == 0
+      when: sssd_result.rc == 0
       ignore_errors: true
       become: yes
       become_user: root

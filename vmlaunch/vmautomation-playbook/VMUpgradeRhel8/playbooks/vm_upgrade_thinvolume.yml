@@ -35,8 +35,3 @@
         name: vmupg
     tags:
     - vmupg
-    loop: "{{ vms }}"
-    loop_control:
-      loop_var: vm
-    vars:
-      vm_name: "{{ vm.name }}"
