@@ -1,4 +1,9 @@
 ---
+---
+- name: Setting fact for vm hostname
+  ansible.builtin.set_fact:
+    ansible_host: "{{ BMIP }}"
+
 - name: check the thin pool is present or not
   shell: "sudo lvs -a -o +devices | grep -w  ' kpool' | awk '{print $1 }'"
   register: hasKpool
