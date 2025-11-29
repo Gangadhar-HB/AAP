@@ -1,6 +1,10 @@
 ---
 - block:
 
+    - name: Setting fact for vm hostname
+      ansible.builtin.set_fact:
+        ansible_host: "{{ BMIP }}"
+
     - name: Include network details
       include_tasks: files/get_networkInfo.yml
 
