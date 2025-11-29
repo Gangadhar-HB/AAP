@@ -85,7 +85,7 @@
   ignore_errors: true
   become: yes
   become_user: root
-  when: 'group_vm in group_names'
+  
 
 - name: Comment out  in fstab
   lineinfile:
@@ -97,7 +97,7 @@
   when: verify_share.rc ==  0
   become: yes
   become_user: root
-  when: 'group_vm in group_names'
+  
 
 
 - name: verify usr
@@ -106,7 +106,7 @@
   ignore_errors: true
   become: yes
   become_user: root
-  when: 'group_vm in group_names'
+  
 
 - name: Comment out  in fstab
   replace:
@@ -116,7 +116,7 @@
   when: verify_usr.rc ==  0
   become: yes
   become_user: root
-  when: 'group_vm in group_names'
+  
 
 - name: copy hosts file into backup
   copy: src="/etc/hosts" dest="/DGdata/VMBACKUP/hosts" mode="0755" remote_src=yes
