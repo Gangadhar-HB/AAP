@@ -5,6 +5,9 @@
       ansible.builtin.setup:
         filter: ansible_lvm
 
+    - debug:
+        var: ansible_lvm
+
     # ----------------------------------------------
     # Determine whether kpool exists
     # ----------------------------------------------
