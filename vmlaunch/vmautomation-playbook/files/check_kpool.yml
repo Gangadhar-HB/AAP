@@ -14,7 +14,9 @@
   check_mode: true
 
 - name: Get LVM facts
-  community.general.lvg_facts:
+  ansible.builtin.setup:
+    gather_subset:
+      - hardware
   register: lvg_facts
 
 - block:
@@ -27,10 +29,12 @@
      ansible.builtin.set_fact:
        thinPoolsize: "{{ (kpool_info.size_g | float * 1024) | int if kpool_info.size_g is defined else kpool_info.size_g | default(0) }}"
 
-  when: kpool_check.changed == false
-
 - block:
    - name: Get volume group facts
+     ansible.builtin.setup:
+       gather_subset:
+         - hardware
+     register: vg_facts
      community.general.lvg_facts:
      register: vg_facts
 
