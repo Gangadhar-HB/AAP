@@ -55,7 +55,7 @@
   command: /sbin/lvcreate --wipesignatures y --virtualsize {{ lv_size }} -n {{ vm_name }}_{{ lv_name }} --thin vg01/kpool
   register: lvcreate
   become: yes
-  when: group in group_names and bmlvm.stdout == "" and lvmpodman.stdout == ""
+  when: ansible_host == BMIP and bmlvm.stdout == "" and lvmpodman.stdout == ""
 
 - debug: var=lvcreate.stdout
   when: ansible_host == BMIP and bmlvm.stdout == ""
@@ -63,13 +63,13 @@
 - name: disk device name list
   set_fact:
     disk_device: [ "sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg" ]
-  when: group in group_names
+  when: ansible_host == BMIP
 
 
 - name: disk device scsci unit number
   set_fact:
     disk_unit_num: [ "0", "1", "2", "3", "4", "5" ]
-  when: group in group_names
+  when: ansible_host == BMIP
 
 - fail:
     msg: "{{ vm_name }}_{{ lv_name }} already exists...."
@@ -96,12 +96,12 @@
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "/dev/vg01/{{ vm_name }}_{{ lv_name }}"
-  when: group in group_names and bmlvm.stdout == ""
+  when: ansible_host == BMIP and bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "{{ bmlvm.stdout }}"
-  when: group in group_names and bmlvm.stdout != ""
+  when: ansible_host == BMIP and bmlvm.stdout != ""
 
 
 - name: Attach lvm partition for the VM
