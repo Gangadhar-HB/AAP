@@ -38,6 +38,7 @@
           ansible.builtin.template:
             src: "roles/create_cfg/templates/network_config.ini.j2"
             dest: "/tmp/network_{{ vm_name }}.ini"
+            mode: '0664'
           become: true
 
         - name: Read network config content (native replacement for 'cat')
