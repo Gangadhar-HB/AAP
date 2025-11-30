@@ -126,6 +126,9 @@
     delegate_to: "{{ BMIP }}"
     any_errors_fatal: true
 
+  - debug:
+      msg: "OS Partition: {{ os_partition.stdout }}"
+
   - name: copying image to /var/lib/libvirt/images/
     command: cp -pvf /home/autoinstall/{{ VM_UPGRADE_QCOW2 }} {{ os_partition.stdout }}
     register: copy_qcow2_libvirt
