@@ -83,8 +83,7 @@
   when: ( kodiak_vm_latest_patch.stdout != "" )
 
 - name: Read check status file from remote host
-  ansible.builtin.slurp:
-    src: "/home/autoinstall/{{ check_status_file }}"
+  ansible.builtin.shell: cat /home/autoinstall/{{ check_status_file }}
   register: check_status
 
 - meta: end_play
