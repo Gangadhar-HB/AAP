@@ -14,13 +14,14 @@
             failed_vms: "{{ failed_vms | default([]) + [vm_name] }}"
 
         - name: Remove LV partitions for failed VM
-          ansible.builtin.command: >
-            lvremove -y {{ vg_name }}/{{ item }}
+          community.general.lvol:
+            vg: "{{ vg_name }}"
+            lv: "{{ item }}"
+            state: absent
           loop:
             - "{{ vm_name }}_part"
             - "{{ vm_name }}_vol"
-          ignore_errors: yes
-
+          ignore_errors: true
 
       when: vm_creation_result is failed
 
