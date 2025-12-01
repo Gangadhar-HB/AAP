@@ -256,7 +256,6 @@
   shell: lvs --noheadings -o lv_size '/dev/mapper/vg01-var_tmp' | sed 's/^ *//'|  cut -d'.' -f1
   register: lvsize
   become: yes
-  delegate_to: "{{ BMIP }}"
 
 - debug:
    var: lvsize.stdout
