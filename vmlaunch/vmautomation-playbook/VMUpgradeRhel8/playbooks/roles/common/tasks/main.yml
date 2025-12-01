@@ -16,6 +16,10 @@
   ignore_errors: true
   delegate_to: "{{ BMIP }}"
 
+- name: create {{ check_status_file }} file
+  local_action: shell /bin/touch /home/autoinstall/{{ check_status_file }}
+  delegate_to: "{{ BMIP }}"
+
 - name: Adding autoinstall user into libvirt group
   command: usermod -a -G libvirt {{ upg_user }}
   register: usermod_autoinstall
