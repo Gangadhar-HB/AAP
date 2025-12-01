@@ -444,10 +444,10 @@
     when:
     - UpgradeType != 10
 
-  rescue:
-    - name: Reboot the system due to failure
-      command: reboot
-      become: yes
-      become_user: root
-      ignore_errors: true
+#  rescue:
+#    - name: Reboot the system due to failure
+#      command: reboot
+#      become: yes
+#      become_user: root
+#      ignore_errors: true
       
