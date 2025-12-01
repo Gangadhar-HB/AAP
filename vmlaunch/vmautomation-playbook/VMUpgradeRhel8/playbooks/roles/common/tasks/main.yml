@@ -16,8 +16,10 @@
   ignore_errors: true
   delegate_to: "{{ BMIP }}"
 
-- name: create {{ check_status_file }} file
-  shell: /bin/touch /home/autoinstall/{{ check_status_file }}
+- name: create {{ check_status_file }} file with 'true' content
+  ansible.builtin.copy:
+    content: "true\n"
+    dest: /home/autoinstall/{{ check_status_file }}
   delegate_to: "{{ BMIP }}"
 
 - name: Adding autoinstall user into libvirt group
@@ -83,7 +85,6 @@
 
 - local_action: shell /bin/cat /home/autoinstall/{{ check_status_file }}
   register: check_status
-
 
 - meta: end_play
   when: check_status.stdout == 'fail'
