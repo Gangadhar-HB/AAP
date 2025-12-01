@@ -59,7 +59,7 @@
     when: (qcow_check.rc != 0)
 
   - name: Running backup script before shutting down
-    include_role:
+    import_role:
       name: container_recover_backup
     vars:
       parent_role_name: vmupg
@@ -73,12 +73,12 @@
     become_user: root
 
   - name: taking backup of rhel79 files
-    include_role:
+    import_role:
       name: container_upgrade
     
 
   - name: remove docker pool which is unused
-    include_role:
+    import_role:
       name: remove_docker_pool
     
 
@@ -169,7 +169,7 @@
     any_errors_fatal: true
 
   - name: Launching VM with block storage
-    include_role:
+    import_role:
       name: vmrelaunch_blockstorage
     delegate_to: "{{ BMIP }}"
     when: os_partition.stdout.find(".qcow2") == -1
