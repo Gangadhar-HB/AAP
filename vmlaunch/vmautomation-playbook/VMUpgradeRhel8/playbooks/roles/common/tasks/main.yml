@@ -17,7 +17,7 @@
   delegate_to: "{{ BMIP }}"
 
 - name: create {{ check_status_file }} file
-  local_action: shell /bin/touch /home/autoinstall/{{ check_status_file }}
+  shell: /bin/touch /home/autoinstall/{{ check_status_file }}
   delegate_to: "{{ BMIP }}"
 
 - name: Adding autoinstall user into libvirt group
