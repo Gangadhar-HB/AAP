@@ -10,6 +10,7 @@
   any_errors_fatal: true
   remote_user: "{{ upg_user }}"
   become: true
+  strategy: free
 
   roles:
     - role: vmrollback
