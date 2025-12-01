@@ -20,7 +20,6 @@
   ansible.builtin.copy:
     content: "true\n"
     dest: /home/autoinstall/{{ check_status_file }}
-  delegate_to: "{{ BMIP }}"
 
 - name: Adding autoinstall user into libvirt group
   command: usermod -a -G libvirt {{ upg_user }}
