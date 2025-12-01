@@ -154,14 +154,6 @@
   become: yes
   become_user: root
 
-- name : writing hosts file with repo details
-  lineinfile:
-    path: /DGdata/VMBACKUP/hosts
-    regexp: '^(.*)update-repo.kodiak.repo(.*)$'
-    line: '{{ repo_ip }} update-repo.kodiak.repo'
-  become: yes
-  become_user: root
-
 - name: copying from /usr/local/etc to /DGdata/VMBACKUP
   copy: src=/DGdata/VMBACKUP/hosts dest=/usr/local/etc/hosts remote_src=yes
   register: hosts_status
