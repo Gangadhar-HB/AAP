@@ -83,206 +83,208 @@
     become: yes
     become_user: root
 
-  - name: Shutdown VM
-    command: virsh -c qemu:///system shutdown {{ vm_name }}
-    register: vm_shut
-    delegate_to: "{{ BMIP }}"
-    any_errors_fatal: true
 
-  - name: check VM state
-    shell: virsh -c qemu:///system dominfo {{ vm_name }} | grep "State"
-    register: vm_check
-    until: vm_check.stdout.find("shut off") != -1
-    retries: 20
-    delay: 30
-    delegate_to: "{{ BMIP }}"
-    ignore_errors: true
 
-  - debug: var=vm_check
-    delegate_to: "{{ BMIP }}"
-    ignore_errors: true
-
-  - name: Force stop VM if not stopped
-    command:  virsh -c qemu:///system destroy {{ vm_name }}
-    register: destroy_vm
-    delegate_to: "{{ BMIP }}"
-    when: vm_check.stdout.find("shut off") == -1
-    ignore_errors: true
-
-  - name: check available ram
-    shell: free -m | awk 'FNR==2 {print $NF}'
-    register: host_free_mem
-    delegate_to: "{{ BMIP }}"
-
-  - name: Starting VM since memory is not available
-    command: virsh -c qemu:///system start {{ vm_name }}
-    when: host_free_mem | int  < total_mem | int
-
-  - fail: msg="Memory allocated for VM is not available on baremetal Host"
-    when: host_free_mem | int  < total_mem | int
-    any_errors_fatal: true
-
-  - name: Finding os partition
-    shell: "virsh -c qemu:///system domblklist {{ vm_name }} | awk 'NR>2 {print $2}' | head -n 1"
-    register: os_partition
-    delegate_to: "{{ BMIP }}"
-    any_errors_fatal: true
-
-  - name: copying image to /var/lib/libvirt/images/
-    command: cp -pvf /home/autoinstall/{{ VM_UPGRADE_QCOW2 }} {{ os_partition.stdout }}
-    register: copy_qcow2_libvirt
-    delegate_to: "{{ BMIP }}"
-    when: os_partition.stdout.find(".qcow2") != -1
-    any_errors_fatal: true
-
-  - name: Launching VM with block storage
-    import_role:
-      name: vmrelaunch_blockstorage
-    delegate_to: "{{ BMIP }}"
-    when: os_partition.stdout.find(".qcow2") == -1
-  
-  - block:
-    - name: start VM
-      command:  virsh -c qemu:///system start {{ vm_name }}
-      register: start_vm
-      delegate_to: "{{ BMIP }}"
-  
-    - debug: var=start_vm
-      delegate_to: "{{ BMIP }}"
-  
-    - meta: clear_host_errors
-
-    - name: Remove target system from local known_hosts file
-      become: no
-      copy:
-        content: ""
-        dest: /root/.ssh/known_hosts
-      delegate_to: localhost
-  
-    - name: Check for VM connection
-      wait_for:
-        port: 22
-        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
-        connect_timeout: 5
-        delay: 10
-        timeout: 1800
-      connection: local
-      any_errors_fatal: true
-      vars:
-        ansible_python_interpreter: /usr/bin/python3
-  
-    - debug: msg="Waiting for containers to migrate and come up, will take max 5 minutes"
-  
-    - name: Ensure root .ssh directory exists
-      file:
-        path: /root/.ssh
-        state: directory
-        owner: root
-        group: root
-        mode: '0700'
-  
-    - name: update sshd
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        line: "{{item}}"
-      with_items:
-        - 'Match user autoinstall'
-        - 'PasswordAuthentication yes'
-      become: yes
-      become_user: root
-  
-    - name: restart sshd
-      service:
-        name: sshd
-        state: restarted
-        enabled: yes
-      become: yes
-      become_user: root
-  
-    - name: removing the LV
-      shell: lvremove -f /dev/mapper/vg01-usr_share
-      when: verify_share.rc ==  0
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
-    - name: removing the line from the fstab file.
-      lineinfile:
-        path: /etc/fstab
-        regexp: '.*/usr/share.*'
-        state: absent
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
-    - command: cat /usr/local/etc/running_container.dat
-      register: running_list
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
-    - debug:
-        msg: "{{ running_list }}"
-      become_user: root
-  
-  
-    - name: check for podman service to be up
-      command: systemctl is-active podman.socket
-      register: podman_status
-      until: podman_status.rc == 0
-      retries: 12
-      delay: 10
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
-    - fail: msg="podman service is not started"
-      when:
-        - podman_status.rc != 0
-        - ansible_os_family == "RedHat"
-        - ansible_distribution_major_version|int == "8"
-        - ansible_system == "Linux"
-      any_errors_fatal: true
-  
-    - name: running vm_misc_save_restore.sh script on VM
-      command: /DGdata/Software/tps_scripts/vm_misc_save_restore.sh -d 2 RESTORE
-      register: backup_vm_files
-      any_errors_fatal: true
-      become: yes
-      become_user: root
-  
-    - name: checking id sssd
-      command: id sssd
-      register: sssd_result
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
-    - name: create sssd directory on VM for sssd
-      file: path=/var/log/sssd state=directory mode=750 group=sssd owner=sssd
-      when: sssd_result.rc == 0
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
-    - name: Check for latest patch
-      command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
-      register: kodiak_vm_upg_patch
-      failed_when: kodiak_vm_upg_patch.stdout == ""
-      any_errors_fatal: true
-      become: yes
-      become_user: root
-  
-  
-    - name: rhel8 os version
-      shell: |
-        rhel_ver=$(awk -F'=' '/VERSION_ID/{ gsub(/"/,""); print $2}' /etc/os-release)
-        echo "$rhel_ver"
-      register: rhel79_8osrelease
-      ignore_errors: true
-  
-    - debug: var=rhel79_8osrelease
-  
-    - debug: msg="VM Upgrade success"
-    when:
-    - UpgradeType != 10
+#  - name: Shutdown VM
+#    command: virsh -c qemu:///system shutdown {{ vm_name }}
+#    register: vm_shut
+#    delegate_to: "{{ BMIP }}"
+#    any_errors_fatal: true
+#
+#  - name: check VM state
+#    shell: virsh -c qemu:///system dominfo {{ vm_name }} | grep "State"
+#    register: vm_check
+#    until: vm_check.stdout.find("shut off") != -1
+#    retries: 20
+#    delay: 30
+#    delegate_to: "{{ BMIP }}"
+#    ignore_errors: true
+#
+#  - debug: var=vm_check
+#    delegate_to: "{{ BMIP }}"
+#    ignore_errors: true
+#
+#  - name: Force stop VM if not stopped
+#    command:  virsh -c qemu:///system destroy {{ vm_name }}
+#    register: destroy_vm
+#    delegate_to: "{{ BMIP }}"
+#    when: vm_check.stdout.find("shut off") == -1
+#    ignore_errors: true
+#
+#  - name: check available ram
+#    shell: free -m | awk 'FNR==2 {print $NF}'
+#    register: host_free_mem
+#    delegate_to: "{{ BMIP }}"
+#
+#  - name: Starting VM since memory is not available
+#    command: virsh -c qemu:///system start {{ vm_name }}
+#    when: host_free_mem | int  < total_mem | int
+#
+#  - fail: msg="Memory allocated for VM is not available on baremetal Host"
+#    when: host_free_mem | int  < total_mem | int
+#    any_errors_fatal: true
+#
+#  - name: Finding os partition
+#    shell: "virsh -c qemu:///system domblklist {{ vm_name }} | awk 'NR>2 {print $2}' | head -n 1"
+#    register: os_partition
+#    delegate_to: "{{ BMIP }}"
+#    any_errors_fatal: true
+#
+#  - name: copying image to /var/lib/libvirt/images/
+#    command: cp -pvf /home/autoinstall/{{ VM_UPGRADE_QCOW2 }} {{ os_partition.stdout }}
+#    register: copy_qcow2_libvirt
+#    delegate_to: "{{ BMIP }}"
+#    when: os_partition.stdout.find(".qcow2") != -1
+#    any_errors_fatal: true
+#
+#  - name: Launching VM with block storage
+#    import_role:
+#      name: vmrelaunch_blockstorage
+#    delegate_to: "{{ BMIP }}"
+#    when: os_partition.stdout.find(".qcow2") == -1
+#  
+#  - block:
+#    - name: start VM
+#      command:  virsh -c qemu:///system start {{ vm_name }}
+#      register: start_vm
+#      delegate_to: "{{ BMIP }}"
+#  
+#    - debug: var=start_vm
+#      delegate_to: "{{ BMIP }}"
+#  
+#    - meta: clear_host_errors
+#
+#    - name: Remove target system from local known_hosts file
+#      become: no
+#      copy:
+#        content: ""
+#        dest: /root/.ssh/known_hosts
+#      delegate_to: localhost
+#  
+#    - name: Check for VM connection
+#      wait_for:
+#        port: 22
+#        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+#        connect_timeout: 5
+#        delay: 10
+#        timeout: 1800
+#      connection: local
+#      any_errors_fatal: true
+#      vars:
+#        ansible_python_interpreter: /usr/bin/python3
+#  
+#    - debug: msg="Waiting for containers to migrate and come up, will take max 5 minutes"
+#  
+#    - name: Ensure root .ssh directory exists
+#      file:
+#        path: /root/.ssh
+#        state: directory
+#        owner: root
+#        group: root
+#        mode: '0700'
+#  
+#    - name: update sshd
+#      lineinfile:
+#        path: /etc/ssh/sshd_config
+#        line: "{{item}}"
+#      with_items:
+#        - 'Match user autoinstall'
+#        - 'PasswordAuthentication yes'
+#      become: yes
+#      become_user: root
+#  
+#    - name: restart sshd
+#      service:
+#        name: sshd
+#        state: restarted
+#        enabled: yes
+#      become: yes
+#      become_user: root
+#  
+#    - name: removing the LV
+#      shell: lvremove -f /dev/mapper/vg01-usr_share
+#      when: verify_share.rc ==  0
+#      ignore_errors: true
+#      become: yes
+#      become_user: root
+#  
+#    - name: removing the line from the fstab file.
+#      lineinfile:
+#        path: /etc/fstab
+#        regexp: '.*/usr/share.*'
+#        state: absent
+#      ignore_errors: true
+#      become: yes
+#      become_user: root
+#  
+#    - command: cat /usr/local/etc/running_container.dat
+#      register: running_list
+#      ignore_errors: true
+#      become: yes
+#      become_user: root
+#  
+#    - debug:
+#        msg: "{{ running_list }}"
+#      become_user: root
+#  
+#  
+#    - name: check for podman service to be up
+#      command: systemctl is-active podman.socket
+#      register: podman_status
+#      until: podman_status.rc == 0
+#      retries: 12
+#      delay: 10
+#      ignore_errors: true
+#      become: yes
+#      become_user: root
+#  
+#    - fail: msg="podman service is not started"
+#      when:
+#        - podman_status.rc != 0
+#        - ansible_os_family == "RedHat"
+#        - ansible_distribution_major_version|int == "8"
+#        - ansible_system == "Linux"
+#      any_errors_fatal: true
+#  
+#    - name: running vm_misc_save_restore.sh script on VM
+#      command: /DGdata/Software/tps_scripts/vm_misc_save_restore.sh -d 2 RESTORE
+#      register: backup_vm_files
+#      any_errors_fatal: true
+#      become: yes
+#      become_user: root
+#  
+#    - name: checking id sssd
+#      command: id sssd
+#      register: sssd_result
+#      ignore_errors: true
+#      become: yes
+#      become_user: root
+#  
+#    - name: create sssd directory on VM for sssd
+#      file: path=/var/log/sssd state=directory mode=750 group=sssd owner=sssd
+#      when: sssd_result.rc == 0
+#      ignore_errors: true
+#      become: yes
+#      become_user: root
+#  
+#    - name: Check for latest patch
+#      command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
+#      register: kodiak_vm_upg_patch
+#      failed_when: kodiak_vm_upg_patch.stdout == ""
+#      any_errors_fatal: true
+#      become: yes
+#      become_user: root
+#  
+#  
+#    - name: rhel8 os version
+#      shell: |
+#        rhel_ver=$(awk -F'=' '/VERSION_ID/{ gsub(/"/,""); print $2}' /etc/os-release)
+#        echo "$rhel_ver"
+#      register: rhel79_8osrelease
+#      ignore_errors: true
+#  
+#    - debug: var=rhel79_8osrelease
+#  
+#    - debug: msg="VM Upgrade success"
+#    when:
+#    - UpgradeType != 10
