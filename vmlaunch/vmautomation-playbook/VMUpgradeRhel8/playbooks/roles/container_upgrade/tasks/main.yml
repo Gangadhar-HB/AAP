@@ -40,13 +40,11 @@
     remote_src: yes
   with_items: "{{ copy_rhel79containerdat_status.files }}"
 
-
 - name: copying from /usr/local/etc to /DGdata/rhel79containersini
   become: yes
   become_user: root
   shell: yes | mv -f /usr/local/etc/containers/*.* /DGdata/rhel79containersini
   ignore_errors: true
-
 
 - name: finding from  /usr/local/etc to /DGdata/rhel79servicefiles
   become: yes
@@ -72,7 +70,6 @@
   shell: rm -rf /usr/local/etc/systemd/system/*.service
   register: usr_local_servicefiles
   when: ansible_distribution_major_version == 7
-#- debug: msg="{{usr_local_servicefiles.stdout}}"
 
 
 - debug: 
@@ -102,7 +99,6 @@
   ignore_errors: true
   become: yes
   become_user: root
-
 
 
 - name: systemdsrvc_files

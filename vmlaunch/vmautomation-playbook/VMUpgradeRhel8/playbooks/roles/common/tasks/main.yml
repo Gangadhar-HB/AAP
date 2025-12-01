@@ -5,149 +5,107 @@
 #
 ---
 - name: Remove target system from local known_hosts file
-  ansible.builtin.copy:
+  copy:
     content: ""
     dest: /root/.ssh/known_hosts
   delegate_to: localhost
 
-- name: Create VM status file with value true
-  ansible.builtin.copy:
-    dest: "/home/autoinstall/check_status_{{ ansible_host }}"
-    content: "true\n"
-    owner: autoinstall
-    group: kodiakgroup
-    mode: '0644'
-
 - name: Verify libvirt group check for autoinstall
-  ansible.builtin.command:
-    cmd: virsh -c qemu:///system -q pwd
-    stdin: "yes"
+  shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_check
   ignore_errors: true
   delegate_to: "{{ BMIP }}"
-  changed_when: false
 
 - name: Adding autoinstall user into libvirt group
-  ansible.builtin.user:
-    name: "{{ upg_user }}"
-    groups: libvirt
-    append: true
+  command: usermod -a -G libvirt {{ upg_user }}
   register: usermod_autoinstall
   delegate_to: "{{ BMIP }}"
   when: libvirt_check.rc != 0
-  become: true
+  become: yes
 
 - name: Check if polkit service exists
-  ansible.builtin.systemd_service:
+  ansible.builtin.systemd:
     name: polkit
   register: polkit_status
-  ignore_errors: true
-  become: true
+  ignore_errors: yes
+  become: yes
   delegate_to: "{{ BMIP }}"
   when: libvirt_check.rc != 0
 
 - name: Restart polkit service if it exists and is running
-  ansible.builtin.systemd_service:
+  ansible.builtin.systemd:
     name: "{{ item }}"
     state: restarted
   loop:
     - polkit
     - libvirtd
-  ignore_errors: true
-  become: true
+  ignore_errors: yes
+  become: yes
   when: polkit_status is defined and polkit_status.status is defined
-  delegate_to: "{{ BMIP }}"
+
 
 - name: Re-verify libvirt group check for autoinstall
-  ansible.builtin.command:
-    cmd: virsh -c qemu:///system -q pwd
-    stdin: "yes"
+  shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_recheck
   any_errors_fatal: true
   delegate_to: "{{ BMIP }}"
   when: libvirt_check.rc != 0
-  changed_when: false
 
-- name: Debug VM names on bare-metal hosts
-  ansible.builtin.debug:
-    msg: "Checking for VM : {{ vm_name }} on 2U host"
-  delegate_to: "{{ BMIP }}"
+- debug:
+    msg:
+    - "Checking for VM : {{ vm_name }} on 2U host"
 
-- name: Check for VM on the 2U Host
-  community.libvirt.virt:
-    command: info
-    name: "{{ vm_name }}"
-    uri: "qemu:///system"
+- name: check for VM on the 2U Host
+  command: virsh -c qemu:///system dominfo {{ vm_name }}
   register: vm_check
   delegate_to: "{{ BMIP }}"
+  failed_when: vm_check.rc == 1
   any_errors_fatal: true
 
 - name: Check for latest patch
-  ansible.builtin.command:
-    cmd: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
+  command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
   register: kodiak_vm_latest_patch
-  become: true
+  become: yes
   become_user: root
   any_errors_fatal: true
-  changed_when: false
 
-- name: Debug kodiak_vm_latest_patch
-  ansible.builtin.debug:
-    msg: "kodiak_vm_latest_patch {{ kodiak_vm_latest_patch }}"
+- debug: msg="kodiak_vm_latest_patch {{ kodiak_vm_latest_patch }} "
 
-- name: Debug VM already upgraded
-  ansible.builtin.debug:
-    msg: "VM already Upgraded {{ check_status_file }}"
-  when: kodiak_vm_latest_patch.stdout != ""
+- debug: msg="VM already Upgraded {{ check_status_file }} "
+  when: ( kodiak_vm_latest_patch.stdout != "" )
 
-- name: Write fail status to check status file
-  ansible.builtin.copy:
-    content: "fail"
-    dest: "/home/autoinstall/{{ check_status_file }}"
-  delegate_to: localhost
-  when: kodiak_vm_latest_patch.stdout != ""
+- local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
+  when: ( kodiak_vm_latest_patch.stdout != "" )
 
-- name: Read check status file from remote host
-  ansible.builtin.slurp:
-    src: "/home/autoinstall/{{ check_status_file }}"
-  register: check_status_slurp
+- local_action: shell /bin/cat /home/autoinstall/{{ check_status_file }}
+  register: check_status
 
-- name: Set check status fact
-  ansible.builtin.set_fact:
-    check_status: "{{ check_status_slurp.content | b64decode | trim }}"
 
-- name: End play if status is fail
-  ansible.builtin.meta: end_play
-  when: check_status == 'fail'
+- meta: end_play
+  when: check_status.stdout == 'fail'
 
-- name: Check for VM prerequisite patch
-  ansible.builtin.command:
-    cmd: /bin/sed -nr '/{{ prev_vm_patch }}-/,$p' /etc/kodiak-release
+- name: Check for VM  prerequisite patch
+  command: /bin/sed -nr '/{{ prev_vm_patch }}-/,$p' /etc/kodiak-release
   register: kodiak_vm_prerequisite_patch
   failed_when: kodiak_vm_prerequisite_patch.stdout == ""
   any_errors_fatal: true
-  become: true
+  become: yes
   become_user: root
-  changed_when: false
 
 - name: Check if IPv4 ICMP timestamp rules are present
   become: true
   become_user: root
-  ansible.builtin.shell: |
-    set -o pipefail
+  shell: >
     (grep -E -- "-A INPUT.*-p icmp.*--icmp-type (timestamp-request|13).* -j REJECT" /etc/sysconfig/iptables &&
      grep -E -- "-A INPUT.*-p icmp.*--icmp-type (timestamp-reply|14).* -j REJECT" /etc/sysconfig/iptables) ||
     { sed -i '/^COMMIT/q' /etc/sysconfig/iptables; false; }
-  args:
-    executable: /bin/bash
   register: icmp_rule_check
-  ignore_errors: true
-  changed_when: false
+  ignore_errors: yes
 
 - name: Ensure IPv4 ICMP rules are present if missing
   become: true
   become_user: root
-  ansible.builtin.blockinfile:
+  blockinfile:
     path: /etc/sysconfig/iptables
     block: |
       -A INPUT -p icmp --icmp-type timestamp-request -j REJECT --reject-with icmp-host-prohibited
@@ -159,21 +117,17 @@
 - name: Check if IPv6 ICMP timestamp rules are present
   become: true
   become_user: root
-  ansible.builtin.shell: |
-    set -o pipefail
+  shell: >
     (grep -E "-A INPUT.*-p icmpv6.*--icmpv6-type (13).* -j REJECT" /etc/sysconfig/ip6tables &&
      grep -E "-A OUTPUT.*-p icmpv6.*--icmpv6-type (14).* -j REJECT" /etc/sysconfig/ip6tables) ||
     { sed -i '/^COMMIT/q' /etc/sysconfig/ip6tables; false; }
-  args:
-    executable: /bin/bash
   register: icmpv6_rule_check
-  ignore_errors: true
-  changed_when: false
+  ignore_errors: yes
 
 - name: Ensure IPv6 ICMP rules are present if missing
   become: true
   become_user: root
-  ansible.builtin.blockinfile:
+  blockinfile:
     path: /etc/sysconfig/ip6tables
     block: |
       -A INPUT -p icmpv6 -m icmp6 --icmpv6-type 13 -j REJECT --reject-with icmp6-port-unreachable

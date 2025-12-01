@@ -78,8 +78,8 @@
         mode: '0664'
         content: |
           var_log=10G,/var/log,0755,remap,ext4,defaults
-          var_log_audit=2G,/var/log/audit,0750,remap,ext4,defaults
-          var_tmp=30G,/var/tmp,1777,remap,ext4,defaults,nosuid,nodev,noexec
+          =2G,/var/log/audit,0750,remap,ext4,defaults
+          var_var_log_audittmp=30G,/var/tmp,1777,remap,ext4,defaults,nosuid,nodev,noexec
           var_lib_docker=10G,/var/lib/docker,0700,remap,ext4,defaults
           home=10G,/home,0755,remap,ext4,defaults,nodev
           usr_local_etc=10G,/usr/local/etc,0755,remap,ext4,defaults

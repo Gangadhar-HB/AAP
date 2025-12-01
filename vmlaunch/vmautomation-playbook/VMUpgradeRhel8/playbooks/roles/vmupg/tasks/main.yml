@@ -16,7 +16,7 @@
     delegate_to: "{{ BMIP }}"
 
   - name: copy qcow2 to Baremetal host
-    copy: src="{{ qcow2 }}" dest="/home/autoinstall" mode="0755" remote_src="yes"
+    copy: src="{{ qcow2 }}" dest="/home/autoinstall" mode="0755"
     delegate_to: "{{ BMIP }}"
     any_errors_fatal: true
 
@@ -31,7 +31,8 @@
     ansible.builtin.fail:
       msg: "QCOW2 image check failed! rc={{ qcow_check.rc }} stderr={{ qcow_check.stderr }}"
     delegate_to: "{{ BMIP }}"
-    when: qcow_check.rc != 0
+    when: 
+      - qcow_check.rc != 0
 
   - name: Running backup script before shutting down
     include_role:
@@ -39,8 +40,9 @@
     vars:
       parent_role_name: vmupg
 
+
   - name: creating running_container.dat file with running containers
-    command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat 
+    command: docker ps --format {{ '{{' }}.Names{{ '}}' }} > /usr/local/etc/running_container.dat
     become: yes
     become_user: root
 
@@ -52,7 +54,8 @@
     include_role:
       name: remove_docker_pool
 
-  - name: check whether bsckup exist
+
+  - name: check whether backup exist
     stat:
       path: /DGdata/rhel79containerdat/running_container.dat
     register: dat_exist
@@ -126,24 +129,19 @@
     delegate_to: "{{ BMIP }}"
     any_errors_fatal: true
 
-  - debug:
-      msg: "OS Partition: {{ os_partition.stdout }}"
-
   - name: copying image to /var/lib/libvirt/images/
     command: cp -pvf /home/autoinstall/{{ VM_UPGRADE_QCOW2 }} {{ os_partition.stdout }}
     register: copy_qcow2_libvirt
     delegate_to: "{{ BMIP }}"
     when: os_partition.stdout.find(".qcow2") != -1
     any_errors_fatal: true
-  
-  - block:
-    - name: Launch VM Block Storage
-      include_role:
-        name: vmrelaunch_blockstorage
-    delegate_to: "{{ BMIP }}"
-    run_once: true
-    when: os_partition.stdout.find(".qcow2") == -1
 
+  - name: Launching VM with block storage
+    include_role:
+      name: vmrelaunch_blockstorage
+    delegate_to: "{{ BMIP }}"
+    when: os_partition.stdout.find(".qcow2") == -1
+  
   - block:
     - name: start VM
       command:  virsh -c qemu:///system start {{ vm_name }}
@@ -247,7 +245,6 @@
         - ansible_system == "Linux"
       any_errors_fatal: true
   
-  
     - name: running vm_misc_save_restore.sh script on VM
       command: /DGdata/Software/tps_scripts/vm_misc_save_restore.sh -d 2 RESTORE
       register: backup_vm_files
@@ -286,7 +283,7 @@
       ignore_errors: true
   
     - debug: var=rhel79_8osrelease
-
+  
     - debug: msg="VM Upgrade success"
     when:
     - UpgradeType != 10
