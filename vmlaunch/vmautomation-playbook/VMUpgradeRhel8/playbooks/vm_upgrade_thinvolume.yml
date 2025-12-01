@@ -12,7 +12,7 @@
 
   tasks:
   
-  - import_role:
+  - include_role:
         name: common
     tags:
     - validation
@@ -22,7 +22,7 @@
     vars:
       vm_name: "{{ vm.name }}"
 
-  - import_role:
+  - include_role:
         name: bmhlvm
     tags:
     - bmhlvm
@@ -32,7 +32,7 @@
     vars:
       vm_name: "{{ vm.name }}"
   
-  - import_role:
+  - include_role:
         name: vmupg
     tags:
     - vmupg
