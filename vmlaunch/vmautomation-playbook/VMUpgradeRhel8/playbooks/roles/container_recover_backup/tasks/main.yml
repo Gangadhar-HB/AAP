@@ -48,6 +48,21 @@
   become: yes
   become_user: root
 
+#- name: copying new iptables
+#  copy: src="../../shared/files/iptables" dest="{{ item }}" mode="644"
+#  with_items:
+#    - /etc/sysconfig/iptables
+#  become: yes
+#  become_user: root
+
+#- name: updating the docker file CIS change
+#  lineinfile:
+#    path: /etc/sysconfig/docker
+#    regexp: '^OPTIONS='
+#    line: OPTIONS='--log-level=info -H unix:///var/run/docker.sock --log-driver=journald -G dockerroot --disable-legacy-registry --live-restore --init-path=/usr/libexec/docker/docker-init-current --signature-verification=false'
+#  become: yes
+#  become_user: root
+
 - name: verify /usr/share
   shell: grep '/usr/share' /etc/fstab
   register: verify_share
@@ -70,6 +85,7 @@
   ignore_errors: true
   become: yes
   become_user: root
+  
 
 - name: Comment out  in fstab
   lineinfile:
@@ -81,6 +97,7 @@
   when: verify_share.rc ==  0
   become: yes
   become_user: root
+  
 
 
 - name: verify usr
@@ -89,6 +106,7 @@
   ignore_errors: true
   become: yes
   become_user: root
+  
 
 - name: Comment out  in fstab
   replace:
@@ -98,6 +116,7 @@
   when: verify_usr.rc ==  0
   become: yes
   become_user: root
+  
 
 - name: copy hosts file into backup
   copy: src="/etc/hosts" dest="/DGdata/VMBACKUP/hosts" mode="0755" remote_src=yes
@@ -132,6 +151,14 @@
 - name: copying from /usr/local/etc to /DGdata/VMBACKUP
   command: cp -R /usr/local/etc /DGdata/VMBACKUP
   register: copy_status
+  become: yes
+  become_user: root
+
+- name : writing hosts file with repo details
+  lineinfile:
+    path: /DGdata/VMBACKUP/hosts
+    regexp: '^(.*)update-repo.kodiak.repo(.*)$'
+    line: '{{ repo_ip }} update-repo.kodiak.repo'
   become: yes
   become_user: root
 

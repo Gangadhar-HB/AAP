@@ -5,10 +5,19 @@
 #
 ---
 - name: Remove target system from local known_hosts file
-  copy:
-    content: ""
-    dest: /root/.ssh/known_hosts
+  lineinfile:
+    dest: '{{ home_dir }}/.ssh/known_hosts'
+    state: absent
+    regexp: '^{{ inventory_hostname }}'
   delegate_to: localhost
+
+- name: Create VM status file with value true
+  ansible.builtin.copy:
+    dest: "/home/autoinstall/check_status_{{ ansible_host }}"
+    content: "true\n"
+    owner: autoinstall
+    group: kodiakgroup
+    mode: '0644'
 
 - name: Verify libvirt group check for autoinstall
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
@@ -16,16 +25,10 @@
   ignore_errors: true
   delegate_to: "{{ BMIP }}"
 
-- name: create {{ check_status_file }} file with 'true' content
-  ansible.builtin.copy:
-    content: "true\n"
-    dest: /home/autoinstall/{{ check_status_file }}
-
 - name: Adding autoinstall user into libvirt group
   command: usermod -a -G libvirt {{ upg_user }}
   register: usermod_autoinstall
-  delegate_to: "{{ BMIP }}"
-  when: libvirt_check.rc != 0
+  when:  libvirt_check.rc != 0
   become: yes
 
 - name: Check if polkit service exists
@@ -34,8 +37,7 @@
   register: polkit_status
   ignore_errors: yes
   become: yes
-  delegate_to: "{{ BMIP }}"
-  when: libvirt_check.rc != 0
+  when:  libvirt_check.rc != 0
 
 - name: Restart polkit service if it exists and is running
   ansible.builtin.systemd:
@@ -53,8 +55,7 @@
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_recheck
   any_errors_fatal: true
-  delegate_to: "{{ BMIP }}"
-  when: libvirt_check.rc != 0
+  when:  libvirt_check.rc != 0
 
 - debug:
     msg:
@@ -70,6 +71,7 @@
 - name: Check for latest patch
   command: /bin/sed -nr '/{{ release_vm_patch }}-/,$p' /etc/kodiak-release
   register: kodiak_vm_latest_patch
+  delegate_to: "{{ BMIP }}"
   become: yes
   become_user: root
   any_errors_fatal: true
@@ -77,14 +79,15 @@
 - debug: msg="kodiak_vm_latest_patch {{ kodiak_vm_latest_patch }} "
 
 - debug: msg="VM already Upgraded {{ check_status_file }} "
-  when: ( kodiak_vm_latest_patch.stdout != "" )
+  when: ( group_vm in group_names )  and ( kodiak_vm_latest_patch.stdout != "" )
 
 - local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
-  when: ( kodiak_vm_latest_patch.stdout != "" )
+  when: (  group_vm in group_names )  and ( kodiak_vm_latest_patch.stdout != "" )
 
 - name: Read check status file from remote host
-  ansible.builtin.shell: cat /home/autoinstall/{{ check_status_file }}
+  ansible.builtin.shell: "cat /home/autoinstall/{{ check_status_file }}"
   register: check_status
+
 
 - meta: end_play
   when: check_status.stdout == 'fail'
@@ -92,6 +95,7 @@
 - name: Check for VM  prerequisite patch
   command: /bin/sed -nr '/{{ prev_vm_patch }}-/,$p' /etc/kodiak-release
   register: kodiak_vm_prerequisite_patch
+  delegate_to: "{{ BMIP }}"
   failed_when: kodiak_vm_prerequisite_patch.stdout == ""
   any_errors_fatal: true
   become: yes

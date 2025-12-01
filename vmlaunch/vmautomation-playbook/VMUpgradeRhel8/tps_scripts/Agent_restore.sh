@@ -4,6 +4,7 @@
 # - installs RPM (if present), handles already-installed case
 # - stops/disables service, renames old dirs, removes unit files
 # - extracts backup, restores passwd/group/shadow, reapplies enablement (absent -> enable)
+# - makes auditd mutable by ensuring '-e 1' in /etc/audit/rules.d/audit.rules (single logic inserted at top)
 # - logs to BACKUP_ROOT/restore_logs/
 #
 # Usage:
@@ -30,6 +31,9 @@ SERVICE_FILES=(
   "/etc/systemd/system/auditbeat.service"
   "/usr/lib/systemd/system/auditbeat.service"
 )
+
+# File we will edit to change auditd mode
+AUDIT_RULES_FILE="/etc/audit/rules.d/audit.rules"
 
 usage() {
   cat <<EOF
@@ -64,8 +68,39 @@ log "Backup root: $BACKUP_ROOT"
 [ "$DRY_RUN" = true ] && log "DRY RUN mode enabled"
 
 #
-# Determine selected folder & tar
+# === NEW: Make auditd daemon mutable (bring down from immutable -e 2 to mutable -e 1)
+# This block implements only the requested logic:
+#   - Replace the first occurrence of a line starting with "-e 2" to "-e 1"
+#   - If "-e 1" exists already, do nothing
+#   - If no -e flag exists, append "-e 1"
 #
+if [ -f "$AUDIT_RULES_FILE" ]; then
+  log "[AUDITD] Found $AUDIT_RULES_FILE; ensuring auditd is set to mutable (-e 1)"
+  if grep -q "^[[:space:]]*-e[[:space:]]*2" "$AUDIT_RULES_FILE"; then
+    if [ "$DRY_RUN" = true ]; then
+      log "[AUDITD][DRY RUN] would replace first '-e 2' with '-e 1' in $AUDIT_RULES_FILE"
+    else
+      # Replace only the first occurrence conservatively
+      sed -i '0,/^[[:space:]]*-e[[:space:]]*2/s//-e 1/' "$AUDIT_RULES_FILE" && log "[AUDITD] Replaced first '-e 2' -> '-e 1' in $AUDIT_RULES_FILE"
+      # If you prefer to replace all occurrences, uncomment the following:
+      # sed -i 's/^[[:space:]]*-e[[:space:]]*2/-e 1/g' "$AUDIT_RULES_FILE" && log "[AUDITD] Replaced all '-e 2' -> '-e 1' in $AUDIT_RULES_FILE"
+    fi
+  elif grep -q "^[[:space:]]*-e[[:space:]]*1" "$AUDIT_RULES_FILE"; then
+    log "[AUDITD] audit.rules already contains '-e 1' (mutable)"
+  else
+    if [ "$DRY_RUN" = true ]; then
+      log "[AUDITD][DRY RUN] would append '-e 1' to $AUDIT_RULES_FILE"
+    else
+      echo "-e 1" >> "$AUDIT_RULES_FILE" && log "[AUDITD] Appended '-e 1' to $AUDIT_RULES_FILE"
+    fi
+  fi
+else
+  log "[AUDITD] WARN: $AUDIT_RULES_FILE not found; skipping auditd mode modification"
+fi
+
+# -----------------------------
+# Determine selected folder & tar
+# -----------------------------
 if [ -n "$TAR_PATH" ]; then
   if [ ! -f "$TAR_PATH" ]; then
     log "ERROR: specified tar not found: $TAR_PATH"; exit 1
@@ -220,7 +255,7 @@ install_auditbeat_rpm() {
     log "[RPM] rpm -ivh succeeded"
     return 0
   else
-    log "[RPM] rpm -ivh failed — attempting rpm -Uvh --oldpackage --nodigest as fallback"
+    log "[RPM] rpm -ivh failed  attempting rpm -Uvh --oldpackage --nodigest as fallback"
     if rpm -Uvh --oldpackage --nodigest "$RPM_TO_INSTALL"; then
       log "[RPM] rpm -Uvh --oldpackage succeeded"
       return 0
@@ -240,9 +275,9 @@ if ! install_auditbeat_rpm; then
   fi
 fi
 
-#
+# -----------------------------
 # Preview & extraction
-#
+# -----------------------------
 log "Archive preview (first 40 entries):"
 tar -tzf "$SELECTED_TAR" | head -n 40 | sed 's/^/   /' | tee -a "$LOG_FILE"
 
@@ -266,9 +301,9 @@ else
   log "ERROR: extraction failed (see $LOG_FILE)"; exit 1
 fi
 
-#
+# -----------------------------
 # Restore optional user/group/shadow files
-#
+# -----------------------------
 PASSWD_FILE="${SELECTED_FOLDER}/passwd.auditbeat"
 GROUP_FILE="${SELECTED_FOLDER}/group.auditbeat"
 SHADOW_FILE="${SELECTED_FOLDER}/shadow.auditbeat"
@@ -307,9 +342,9 @@ if [ -f "$SHADOW_FILE" ]; then
   chmod 600 /etc/shadow || true
 fi
 
-#
-# Reapply enablement state (treat 'absent' as 'enabled' so service becomes enabled after restore)
-#
+# -----------------------------
+# Reapply enablement state (treat 'absent' as 'enabled' by default)
+# -----------------------------
 ENABLE_STATE_FILE="${SELECTED_FOLDER}/service_enablement.txt"
 if [ -f "$ENABLE_STATE_FILE" ]; then
   state=$(tr -d '[:space:]' < "$ENABLE_STATE_FILE" || echo "")
@@ -324,26 +359,26 @@ if [ -f "$ENABLE_STATE_FILE" ]; then
       systemctl disable "$SERVICE_NAME" || log "WARN: disable failed"
       ;;
     absent)
-      log "Saved state was 'absent' — enabling ${SERVICE_NAME} by default"
+      log "Saved state was 'absent'  enabling ${SERVICE_NAME} by default"
       systemctl enable "$SERVICE_NAME" || log "WARN: enable failed"
       ;;
     *)
-      log "Unknown saved state: '$state' — no enable/disable changes made"
+      log "Unknown saved state: '$state'  no enable/disable changes made"
       ;;
   esac
 else
-  log "No saved enablement file found in backup — skipping enable/disable step"
+  log "No saved enablement file found in backup  skipping enable/disable step"
 fi
 
-# Ensure systemd sees new units
+# Ensure systemd sees new/updated unit files
 log "Reloading systemd daemon"
 systemctl daemon-reload || log "WARN: daemon-reload failed"
 
-#
-# Final: start service unless suppressed
-#
+# -----------------------------
+# Final: start auditbeat service unless suppressed
+# -----------------------------
 if [ "$NO_START" = false ]; then
-  log "Starting ${SERVICE_NAME}"
+  log "Attempting to start ${SERVICE_NAME}"
   if systemctl start "$SERVICE_NAME"; then
     log "${SERVICE_NAME} started successfully"
   else
@@ -355,3 +390,4 @@ else
 fi
 
 log "----- Restore completed -----"
+

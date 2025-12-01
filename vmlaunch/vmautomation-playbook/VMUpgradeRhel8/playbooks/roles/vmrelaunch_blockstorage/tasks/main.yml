@@ -16,7 +16,7 @@
   any_errors_fatal: true
 
 - name: copy new image to VM's thick LV partition
-  command: sudo /usr/bin/qemu-img convert -p /home/autoinstall/{{ VM_UPGRADE_QCOW2 }} -O raw {{ os_partition.stdout }}
+  command: sudo /usr/bin/qemu-img convert -p /home/autoinstall/{{ qcow2_name }} -O raw {{ os_partition.stdout }}
   register: install_VM_output
   any_errors_fatal: true
 
@@ -24,4 +24,9 @@
   file: dest=/var/tftpd/install.cfg state=absent
   ignore_errors: true
 
+#- name: checking install flag file
+#  stat: path=/var/tftpd/install.cfg
+#  register: installflag
+#  failed_when: installflag.stat.islnk is defined
+#  any_errors_fatal: true
 

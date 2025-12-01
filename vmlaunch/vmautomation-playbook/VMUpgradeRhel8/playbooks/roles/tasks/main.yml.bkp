@@ -1,0 +1,215 @@
+---
+- name: Creating lvm volume on Baremetal Host
+  command: lvcreate -L {{ lv_size }} -n {{ lv_name }} vg01
+  register: lvcreate
+  become: yes
+  when: group in group_names 
+
+- name: disk device name list
+  set_fact:
+    disk_device: [ "sda", "sdb", "sdc", "sdd", "sdf", "sde" ]
+
+
+- name: disk device scsci unit number
+  set_fact:
+    disk_unit_num: [ "0", "1", "2", "3", "4", "5" ]
+
+
+
+- name: Gather the number of storage attached to the VM
+  shell: >
+     virsh domblklist {{ vm_name }} | grep -ie "sd*"|awk 'NR>1 {print $1}' | wc -l
+  become: yes
+  register: disk_number
+  when: inventory_hostname in groups[group]
+
+- debug: var=disk_number.stdout
+
+
+#- name: Gather disk device names on baremtal host
+#  shell: >
+#     virsh domblklist {{ vm_name }} | grep -ie "sd*"|awk 'NR>1 {print $1}' 
+#  become: yes
+#  register: disk_device_name
+#  when: inventory_hostname in groups[group]
+
+#- debug: var=disk_device_name.stdout
+
+
+#- name: Gather the number of storage unit number attached to the VM
+#  shell: >
+#    virsh dumpxml {{ vm_name }} | grep -ie "address type='drive'" | grep -ie "unit"| wc -l
+#  become: yes
+#  when: group in group_names
+#  register: disk_number
+#
+#- debug: var=disk_number.stdout
+
+
+- name: Attach lvm partition for the VM
+  command: virsh attach-disk {{ vm_name }} /dev/vg01/{{ lv_name }} {{disk_device[disk_number.stdout|int]}} --persistent --live
+  become: yes
+  register: lvm_disk_attach
+  when: inventory_hostname in groups[group]
+
+- debug: var=lvm_disk_attach.stdout
+
+
+- name: getting new disk unit number output
+  command: echo "{{ disk_number.stdout|int }}"
+  become: yes
+  register: diskunitnumber
+  
+  when: inventory_hostname in groups[group]
+
+- debug: var=diskunitnumber.stdout
+
+
+- name: Gather disk device names on baremtal host
+  shell: >
+     virsh domblklist {{ vm_name }} | grep -ie "sd*"|awk 'NR>1 {print $1}'  | tail -n1
+  become: yes
+  register: disk_device_name
+  when: inventory_hostname in groups[group]
+
+- debug: var=disk_device_name.stdout
+
+
+- name: getting scsci unit number
+  set_fact:
+    disk_scsci_num: "{{ diskunitnumber.stdout }}"
+  when: inventory_hostname in groups[group]
+
+
+- name: getting baremetal disk name 
+  set_fact:
+    disk_name: "{{ disk_device_name.stdout }}"
+  when: inventory_hostname in groups[group]
+
+  
+
+- name: validating LUN number for newdisk
+  shell: > 
+    ls -l /sys/block/*/device | awk '{print $11}'|  cut -d'/' -f4| cut -d ':' -f4
+  register: vmscsci_num
+  when: inventory_hostname in groups[group_vm] 
+
+- debug: var=vmscsci_num.stdout
+
+
+- name: getting LUN number on vm 
+  shell: > 
+    ls -l /sys/block/*/device | awk '{print $11}'|  cut -d'/' -f4| cut -d ':' -f4  |grep -ie {{ hostvars[groups[group][0]]['disk_scsci_num'] }}
+  register: bmhostlun_num
+  when: inventory_hostname in groups[group_vm]
+
+- debug: var=bmhostlun_num.stdout
+
+- fail:
+    msg: "Failed to run {{ bmhostlun_num.stdout }} and {{ vmscsci_num.stdout }} both are not matching with scsci lun number..."
+  when: inventory_hostname in groups[group_vm] and (vmscsci_num.stdout) == (bmhostlun_num.stdout)
+
+
+- name: getting newdisk name on VM
+  shell: > 
+    lsscsi -t | grep -ie "/dev/sd*"|sed 's/\<disk\>//g' |cut -c 8- | grep -ie "{{ hostvars[groups[group][0]]['disk_scsci_num'] }}" | grep -e "/dev/sd*" | awk '$0~FS{print $1 $2}' FS=']'| grep -ie {{ hostvars[groups[group][0]]['disk_scsci_num'] }} | grep -ie "/dev/sd*"  | awk '{print $2}' | cut -d'/' -f3
+  register: bmhostdisk_name
+  when: inventory_hostname in groups[group_vm]
+
+- debug: var=bmhostdisk_name.stdout
+
+#- name: check block type
+#  shell: | 
+#    /sbin/blkid "/dev/{{ bmhostdisk_name.stdout }}" |/bin/sed -nr 's/^.*TYPE="([a-zA-Z_]+)".*$/\1/p' | grep -ie "gpt"  -ie "dos"
+#  register: blocktype
+#  when: inventory_hostname in groups[group_vm]
+
+#- debug: msg=blocktype
+
+
+- name: getting vmlunid variable 
+  shell: >
+    lsscsi -t | grep -ie "/dev/sd*"|sed 's/\<disk\>//g' |cut -c 8- | grep -ie "{{ hostvars[groups[group][0]]['disk_scsci_num'] }}" | grep -e "/dev/sd*" | awk '$0~FS{print $1 $2}' FS=']'|awk '{print $1}'
+  register: vmscsci_id
+  when: inventory_hostname in groups[group_vm]
+
+- debug: var=vmscsci_id.stdout
+
+
+
+- name: Create the label on disks
+  shell: >
+    if [ "{{ vmscsci_id.stdout }}" -eq "{{ bmhostlun_num.stdout }}" ]; then
+     parted -s "/dev/{{ bmhostdisk_name.stdout }}" mklabel gpt
+     parted -s -a optimal "/dev/{{ bmhostdisk_name.stdout }}" mkpart primary 0% 100%
+     parted -s "/dev/{{ bmhostdisk_name.stdout }}" print
+    else
+     VM scsci id not matching with BMH scsci id...
+    fi
+  register: create_labelson_disk
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+
+
+- name: finding pv_name  details
+  shell: |
+   #pvname=`/bin/lsblk --noheadings -l grep -ie "{{ bmhostdisk_name.stdout }}" |/bin/awk '/disk[[:space:]]*$/ {print $1}'| tail -n1 | awk '{print $1}' | cut -d'-' -f2`
+   pvname=`ls -ltr /dev/disk/by-id/ | awk -F'/' '{print $3}' | grep -ie "{{ bmhostdisk_name.stdout }}" | tail -n1`
+   echo "$pvname"
+  register: pv_name
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+
+- name: printing pvname
+  debug: var=pv_name.stdout
+  when: inventory_hostname in groups[group_vm]
+
+
+
+- name: Extending the Volume Group
+  shell: |
+    echo  y | pvcreate "/dev/{{ pv_name.stdout }}"
+    vgextend vg01 "/dev/{{ pv_name.stdout }}"
+  register: vgsize
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+
+- debug: var=vgsize.stdout
+
+- name: Create the "{{ lv_name }}" Logical Volume.
+  lvol:
+    vg: vg01
+    lv: "{{ lv_name }}"
+    size: "{{ lv_size }}"
+    active: yes
+    force: no
+    state: present
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+
+- name: Create a "{{ fs }}" filesystem on lvm "/dev/mapper/{{ vg_name}}-{{ lv_name}}".
+  filesystem:
+    fstype: ext4
+    dev: /dev/mapper/vg01-{{ lv_name }}
+    force: no
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+
+- name: Create a directory to mount the filesystem.
+  file:
+    path: /var/lib/{{ lv_name }}
+    state: directory
+    mode: '0755'
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+
+- name: Mount the created "{{ fs }}" filesystem.
+  mount:
+    path: /var/lib/containers
+    src: /dev/mapper/vg01-{{ lv_name }}
+    fstype: ext4
+    opts: defaults
+    state: mounted
+  become: yes
+  when: inventory_hostname in groups[group_vm]
+

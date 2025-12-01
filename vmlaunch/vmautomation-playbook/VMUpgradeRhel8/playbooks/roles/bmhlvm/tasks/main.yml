@@ -55,28 +55,25 @@
   command: /sbin/lvcreate --wipesignatures y --virtualsize {{ lv_size }} -n {{ vm_name }}_{{ lv_name }} --thin vg01/kpool
   register: lvcreate
   become: yes
-  delegate_to: "{{ BMIP }}"
-  when: bmlvm.stdout == "" and lvmpodman.stdout == ""
+  when: group in group_names and bmlvm.stdout == "" and lvmpodman.stdout == ""
 
 - debug: var=lvcreate.stdout
-  delegate_to: "{{ BMIP }}"
-  when: bmlvm.stdout == ""
+  when:  bmlvm.stdout == ""
 
 - name: disk device name list
   set_fact:
     disk_device: [ "sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg" ]
-  delegate_to: "{{ BMIP }}"
+  when: group in group_names
 
 
 - name: disk device scsci unit number
   set_fact:
     disk_unit_num: [ "0", "1", "2", "3", "4", "5" ]
-  delegate_to: "{{ BMIP }}"
+  when: group in group_names
 
 - fail:
     msg: "{{ vm_name }}_{{ lv_name }} already exists...."
-  delegate_to: "{{ BMIP }}"
-  when: bmlvm.stdout == "" and lvmpodman.stdout == "" and lvcreate.rc != 0
+  when:  bmlvm.stdout == "" and lvmpodman.stdout == "" and lvcreate.rc != 0
 
 
 
@@ -94,20 +91,17 @@
   command: sudo /usr/bin/dd if=/dev/zero of=/dev/vg01/{{ vm_name }}_{{ lv_name }} bs=1024 count=1000 conv=notrunc
   become: yes
   register: vm_dd
-  delegate_to: "{{ BMIP }}"
-  when: bmlvm.stdout == ""
+  when:  bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "/dev/vg01/{{ vm_name }}_{{ lv_name }}"
-  delegate_to: "{{ BMIP }}"
-  when: bmlvm.stdout == ""
+  when: group in group_names and bmlvm.stdout == ""
 
 - name: lv to be attached
   set_fact:
     lv_podman_bm: "{{ bmlvm.stdout }}"
-  delegate_to: "{{ BMIP }}"
-  when: bmlvm.stdout != ""
+  when: group in group_names and bmlvm.stdout != ""
 
 
 - name: Attach lvm partition for the VM
@@ -133,6 +127,7 @@
   command: echo "{{ disk_number.stdout|int }}"
   become: yes
   register: diskunitnumber
+
   delegate_to: "{{ BMIP }}"
 
 - debug: var=diskunitnumber.stdout
@@ -165,6 +160,7 @@
   register: volume_stat
   failed_when: False
   changed_when: False
+  
 
 - debug: var=volume_stat.stdout
 
@@ -172,24 +168,24 @@
   shell: >
     ls -l /dev/disk/by-id|  grep "sdz " |  awk '{print $NF}' | cut -d '/' -f3
   register: bmhostdisk_name
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - debug: var=bmhostdisk_name.stdout
 
 - name: wipefs the newly added disk
   command: wipefs "/dev/{{ bmhostdisk_name.stdout }}"
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: running parted command create label
   command: parted -s "/dev/{{ bmhostdisk_name.stdout }}" mklabel gpt
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: running parted command mkpart
   command: parted -s -a optimal "/dev/{{ bmhostdisk_name.stdout }}" mkpart primary 0% 100% set 1 lvm
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 
 - name: finding pv_name  details
@@ -198,27 +194,27 @@
    echo "$pvname"
   register: pv_name
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: printing pvname
   debug: var=pv_name.stdout
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: pvcreate on new pv
   command: pvcreate "/dev/{{ pv_name.stdout }}"
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: Extend the vg01 volume group
   command: vgextend vg01 "/dev/{{ pv_name.stdout }}"
   register: vgsize
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 
 - name: printing the vg01 size
   debug: var=vgsize.stdout
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 
 - debug: var=vgsize.stdout
@@ -226,12 +222,12 @@
 - name: Create the "{{ lv_name }}" Logical Volume.
   shell: lvcreate -L "{{ lv_size_vm }}" -n "{{ lv_name }}" vg01
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: Create a "{{ fs }}" filesystem on lvm "/dev/mapper/{{ vg_name}}-{{ lv_name}}"
   shell: mkfs.xfs  /dev/mapper/vg01-{{ lv_name }}
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: Create a directory to mount the filesystem.
   file:
@@ -239,23 +235,24 @@
     state: directory
     mode: '0755'
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: Mount the created "{{ fs }}" filesystem.
   shell: sed -i '$ a\/dev/mapper/vg01-{{ lv_name }} /var/lib/containers xfs defaults 0 0' /etc/fstab
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 - name: Mount the created "{{ fs }}" filesystem.
   shell: mount -a
   become: yes
-  when: volume_stat.rc != 0
+  when:  volume_stat.rc != 0
 
 
 - name: Check logical volume size
   shell: lvs --noheadings -o lv_size '/dev/mapper/vg01-var_tmp' | sed 's/^ *//'|  cut -d'.' -f1
   register: lvsize
   become: yes
+  
 
 - debug:
    var: lvsize.stdout
@@ -263,7 +260,7 @@
 - name: Extending vg01-var_tmp space for rhel8
   command: lvextend -r -L +25G /dev/mapper/vg01-var_tmp
   become: yes
-  when: lvsize.stdout | int  <= 25
+  when:  lvsize.stdout | int  <= 25
 
 - name: Resizing vg01-var_tmp space for rhel8
   command: resize2fs /dev/mapper/vg01-var_tmp
