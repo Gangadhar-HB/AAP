@@ -11,6 +11,14 @@
     regexp: '^{{ inventory_hostname }}'
   delegate_to: localhost
 
+- name: Create VM status file with value true
+  ansible.builtin.copy:
+    dest: "/home/autoinstall/check_status_{{ ansible_host }}"
+    content: "true\n"
+    owner: autoinstall
+    group: kodiakgroup
+    mode: '0644'
+
 - name: Verify libvirt group check for autoinstall
   shell: "echo 'yes' |  virsh -c qemu:///system -q pwd"
   register: libvirt_check
