@@ -87,7 +87,7 @@
           DGtmp=5G,/DGtmp,0755,null,xfs,defaults
           {% for key, value in vm.vm_partition.items() %}
           {% set clean_key = key | regex_replace('_size$', '') %}
-          {{ key }}={{ value }}G,/{{ clean_key }},0755,null,ext4,defaults
+          {{ clean_key }}={{ value }}G,/{{ clean_key }},0755,null,ext4,defaults
           {% endfor %}
 
       loop: "{{ vms }}"
