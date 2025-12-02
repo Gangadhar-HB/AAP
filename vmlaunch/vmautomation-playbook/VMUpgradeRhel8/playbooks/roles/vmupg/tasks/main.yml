@@ -182,7 +182,7 @@
   
     - debug: var=start_vm
       delegate_to: "{{ BMIP }}"
-  
+      
     - meta: clear_host_errors
       
   
@@ -206,46 +206,7 @@
       
   
     - debug: msg="Waiting for containers to migrate and come up, will take max 5 minutes"
-  
-    #- name: Enabling password less
-    #  authorized_key:
-    #    user: autoinstall
-    #    state: present
-    #    key: "{{ lookup('file', '/root/.ssh/id_dsa.pub') }}"
-    #  register: pwd_status
-  
-    - name: copying pub key to remote host
-      copy:
-        src: "/root/.ssh/id_dsa.pub"
-        dest: "/tmp/id_dsa.pub"
-      register: copying_dsa_pub
-  
-    - name: Ensure root .ssh directory exists
-      file:
-        path: /root/.ssh
-        state: directory
-        owner: root
-        group: root
-        mode: '0700'
-  
-    - name: Enabling password less
-      shell: |
-        cat /tmp/id_dsa.pub >> ~/.ssh/authorized_keys
-      register: pwd_status
-  
-    - name: Replacing back authorized_keys from /DGdata
-      copy:
-        src: /DGdata/authorized_keys
-        dest: /home/autoinstall/.ssh/
-        owner: autoinstall
-        group: kodiakgroup
-        mode: '0600'
-        remote_src: yes
-      
-      ignore_errors: true
-      become: yes
-      become_user: root
-  
+
     - name: update sshd
       lineinfile:
         path: /etc/ssh/sshd_config
@@ -253,7 +214,6 @@
       with_items:
         - 'Match user autoinstall'
         - 'PasswordAuthentication yes'
-      
       become: yes
       become_user: root
   
@@ -262,7 +222,6 @@
         name: sshd
         state: restarted
         enabled: yes
-      
       become: yes
       become_user: root
   
@@ -270,7 +229,6 @@
       shell: lvremove -f /dev/mapper/vg01-usr_share
       when: verify_share.rc ==  0
       ignore_errors: true
-      
       become: yes
       become_user: root
   
@@ -280,22 +238,18 @@
         regexp: '.*/usr/share.*'
         state: absent
       ignore_errors: true
-      
       become: yes
       become_user: root
   
     - command: cat /usr/local/etc/running_container.dat
       register: running_list
       ignore_errors: true
-      
       become: yes
       become_user: root
   
     - debug:
         msg: "{{ running_list }}"
-      
       become_user: root
-  
   
     - name: check for podman service to be up
       command: systemctl is-active podman.socket
@@ -307,71 +261,14 @@
       ignore_errors: true
       become: yes
       become_user: root
-  
-  
-    #- name: check for docker service to be up
-    #  command: systemctl is-active docker
-    #  register: docker_status
-    #  until: docker_status.rc == 0
-    #  retries: 12
-    #  delay: 10
-    #  
-    #  ignore_errors: true
-    #  become: yes
-  
+
     - fail: msg="podman service is not started"
       when:
-        
         - podman_status.rc != 0
         - ansible_os_family == "RedHat"
         - ansible_distribution_major_version|int == "8"
         - ansible_system == "Linux"
       any_errors_fatal: true
-  
-  
-    #- fail: msg="docker service is not started"
-    #  when:
-    #    
-    #    - docker_status.rc != 0
-    #    - ansible_os_family == "RedHat"
-    #    - ansible_distribution_major_version|int == "7"
-    #    - ansible_system == "Linux"
-    #  any_errors_fatal: true
-  
-  
-  
-    #- name: check for podman containers status if running_container.dat is exists
-    #  shell: podman ps --format {{ '{{' }}.Names{{ '}}' }}
-    #  register: podmancontainer_status
-    #  until: podmancontainer_status.stdout_lines == running_list.stdout_lines
-    #  retries: 10
-    #  delay: 30
-    #  when:
-    #   
-    #   - ansible_os_family == "RedHat"
-    #   - ansible_distribution_major_version|int == "8"
-    #   - ansible_system == "Linux"
-    # any_errors_fatal: true
-    # become: yes
-    # become_user: root
-  
-  
-    #- name: check for docker containers status if running_container.dat is exists
-    #  shell: docker ps --format {{ '{{' }}.Names{{ '}}' }}
-    #  register: dockercontainer_status
-    #  until: dockercontainer_status.stdout_lines == running_list.stdout_lines
-    #  retries: 10
-    #  delay: 30
-    #  when:
-    #    
-    #    - running_list.rc == 0
-    #    - ansible_os_family == "RedHat"
-    #    - ansible_distribution_major_version|int == "7"
-    #    - ansible_system == "Linux"
-    #  any_errors_fatal: true
-    #  become: yes
-    #  become_user: root
-  
   
     - name: running vm_misc_save_restore.sh script on VM
       command: /DGdata/Software/tps_scripts/vm_misc_save_restore.sh -d 2 RESTORE
@@ -413,32 +310,7 @@
       register: rhel79_8osrelease
       ignore_errors: true
       
-  
     - debug: var=rhel79_8osrelease
-  
-  
-  
-    #- name: check for podman containers status
-    #  command: podman ps -f status=running --format {{ '{{' }}.Names{{ '}}' }}
-    #  register: podmancontainer_running_status
-    #  when:
-    #    
-    #    - rhel79_8osrelease.stdout is match("8.*")
-    #  any_errors_fatal: true
-    #  become: yes
-    #  become_user: root
-  
-  
-    #- name: podman running containers list
-    #  become: yes
-    #  become_user: root
-    #  debug:
-    #    msg: "{{ item }}"
-    #  when:
-    #    
-    #    - rhel79_8osrelease.stdout is match("8.*")
-    #  with_items:
-    #    - "{{ podmancontainer_running_status.stdout.split('\n') }}"
   
     - debug: msg="VM Upgrade success"
     when:
