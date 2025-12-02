@@ -77,13 +77,24 @@
         dest: "/usr/local/etc/{{ vm.vm_type }}_thin_pool_volume.cfg.j2"
         mode: '0664'
         content: |
-          var_log=10G,/var/log,0755,remap,ext4,defaults
-          var_log_audit=2G,/var/log/audit,0750,remap,ext4,defaults
+          var_log=5G,/var/log,0755,remap,ext4,defaults
+          var_log_audit=5G,/var/log/audit,0750,remap,ext4,defaults
           var_tmp=30G,/var/tmp,1777,remap,ext4,defaults,nosuid,nodev,noexec
-          var_lib_docker=10G,/var/lib/docker,0700,remap,ext4,defaults
-          home=10G,/home,0755,remap,ext4,defaults,nodev
-          usr_local_etc=10G,/usr/local/etc,0755,remap,ext4,defaults
-          containers=10G,/var/lib/containers,0755,remap,xfs,defaults
+          var_lib_docker=2G,/var/lib/docker,0700,remap,ext4,defaults
+          home=1G,/home,0755,remap,ext4,defaults,nodev
+          usr_local_etc=1G,/usr/local/etc,0755,remap,ext4,defaults
+          containers=4G,/var/lib/containers,0755,remap,xfs,defaults
+          DGtmp=5G,/DGtmp,0755,null,xfs,defaults
+          DGdata={{ '50%VG' if DGdata == '' else DGdata + 'G' }},/DGdata,0755,null,ext4,defaults
+          DGlogs={{ '10%VG' if DGlogs == '' else DGlogs + 'G' }},/DGlogs,0755,null,ext4,defaults
+          Database={{ Database | default(100, true) }}G,/Database,0755,null,ext4,defaults
+          GridGainDrFs={{ GridGainDrFs | default(1 ,true) }}G,/GridGainDrFs,0755,null,ext4,defaults
+          GridGainWal={{ GridGainWal | default(1 , true) }}G,/GridGainWal,0755,null,ext4,defaults
+          GridGainData={{ GridGainData | default(5, true) }}G,/GridGainData,0755,null,ext4,defaults
+          CouchIndex={{ couchindex | default(1, true) }}G,/CouchIndex,0755,null,ext4,defaults
+          CouchData={{ couchdata | default(5, true) }}G,/CouchData,0755,null,ext4,defaults
+          PostgresData={{ PostgresData | default(5, true) }}G,/PostgresData,0755,null,ext4,defaults
+          PostgresWal={{ PostgresWal | default(5, true) }}G,/PostgresWal,0755,null,ext4,defaults
           {% for key, value in vm.vm_partition.items() %}
           {% set clean_key = key | regex_replace('_size$', '') %}
           {{ key }}={{ value }}G,/{{ clean_key }},0755,null,ext4,defaults
