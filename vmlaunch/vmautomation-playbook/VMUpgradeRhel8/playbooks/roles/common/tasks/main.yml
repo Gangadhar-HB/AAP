@@ -84,7 +84,7 @@
 - debug: msg="VM already Upgraded {{ check_status_file }} "
   when: ( kodiak_vm_latest_patch.stdout != "" )
 
-- local_action: shell /bin/echo "fail" > /home/autoinstall/{{ check_status_file }}
+- ansible.builtin.shell: echo "fail" > /home/autoinstall/{{ check_status_file }}
   when: ( kodiak_vm_latest_patch.stdout != "" )
 
 - name: Read check status file from remote host
